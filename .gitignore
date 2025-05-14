@@ -1,0 +1,22 @@
+# Node.js dependencies
+node_modules/
+.serverless/
+
+# Logs
+*.log
+
+# Environment variables
+.env
+
+# IDE files
+.idea/
+.vscode/
+
+# Mac OS files
+.DS_Store
+
+# Backup files
+*.bak
+
+# Package directories
+jspm_packages/

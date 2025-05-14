@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication Callback</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Processing Authentication...</h1>
+        <p>Please wait while we process your sign-in.</p>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js/dist/amazon-cognito-identity.min.js"></script>
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1000.0.min.js"></script>
+    <script>
+        // Parse the URL fragment
+        const fragment = window.location.hash.substring(1);
+        const params = new URLSearchParams(fragment);
+        
+        // Store the tokens in localStorage
+        localStorage.setItem('id_token', params.get('id_token'));
+        localStorage.setItem('access_token', params.get('access_token'));
+        
+        // Redirect back to the main page
+        window.location.href = 'index.html';
+    </script>
+</body>
+</html>

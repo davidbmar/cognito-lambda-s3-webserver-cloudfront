@@ -1,0 +1,176 @@
+service: cognito-serverless-app
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-2 # Change to your preferred region
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+          Resource: !Join ['', ['arn:aws:s3:::', !Ref WebsiteBucket, '/*']]
+
+custom:
+  s3Bucket: ${self:service}-website-${sls:stage}-${aws:accountId}
+
+functions:
+  api:
+    handler: api/handler.getData
+    events:
+      - http:
+          path: data
+          method: get
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+
+resources:
+  Resources:
+    # API Gateway Authorizer
+    ApiGatewayAuthorizer:
+      Type: AWS::ApiGateway::Authorizer
+      Properties:
+        Name: cognito-authorizer
+        IdentitySource: method.request.header.Authorization
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        Type: COGNITO_USER_POOLS
+        ProviderARNs:
+          - !GetAtt UserPool.Arn
+
+    # S3 bucket for website hosting
+    WebsiteBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.s3Bucket}
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: false
+          BlockPublicPolicy: false
+          IgnorePublicAcls: false
+          RestrictPublicBuckets: false
+        WebsiteConfiguration:
+          IndexDocument: index.html
+          ErrorDocument: error.html
+        CorsConfiguration:
+          CorsRules:
+            - AllowedHeaders: ['*']
+              AllowedMethods: [GET, HEAD]
+              AllowedOrigins: ['*']
+              MaxAge: 3000
+
+    # S3 bucket policy for public read access
+    WebsiteBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref WebsiteBucket
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal: '*'
+              Action: 's3:GetObject'
+              Resource: !Join ['', ['arn:aws:s3:::', !Ref WebsiteBucket, '/*']]
+
+    # Cognito user pool
+    UserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: ${self:service}-user-pool-${sls:stage}
+        AutoVerifiedAttributes:
+          - email
+        UsernameAttributes:
+          - email
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireLowercase: true
+            RequireNumbers: true
+            RequireSymbols: false
+            RequireUppercase: true
+
+    # Cognito user pool client
+    UserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: ${self:service}-app-client-${sls:stage}
+        UserPoolId: !Ref UserPool
+        GenerateSecret: false
+        ExplicitAuthFlows:
+          - ALLOW_USER_SRP_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+        AllowedOAuthFlowsUserPoolClient: true
+        AllowedOAuthFlows:
+          - implicit
+          - code
+        AllowedOAuthScopes:
+          - email
+          - openid
+          - profile
+        CallbackURLs:
+          - !Join ['', ['https://', !GetAtt WebsiteBucket.DomainName, '.s3-website-${self:provider.region}.amazonaws.com/callback.html']]
+          - 'http://localhost:8080/callback.html'
+        LogoutURLs:
+          - !Join ['', ['https://', !GetAtt WebsiteBucket.DomainName, '.s3-website-${self:provider.region}.amazonaws.com/index.html']]
+          - 'http://localhost:8080/index.html'
+        SupportedIdentityProviders:
+          - COGNITO
+
+    # Cognito identity pool
+    IdentityPool:
+      Type: AWS::Cognito::IdentityPool
+      Properties:
+        IdentityPoolName: ${self:service}-identity-pool-${sls:stage}
+        AllowUnauthenticatedIdentities: false
+        CognitoIdentityProviders:
+          - ClientId: !Ref UserPoolClient
+            ProviderName: !GetAtt UserPool.ProviderName
+
+    # IAM roles for authenticated users
+    AuthenticatedRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Federated: cognito-identity.amazonaws.com
+              Action: sts:AssumeRoleWithWebIdentity
+              Condition:
+                StringEquals:
+                  cognito-identity.amazonaws.com:aud: !Ref IdentityPool
+                ForAnyValue:StringLike:
+                  cognito-identity.amazonaws.com:amr: authenticated
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+    # Identity pool role attachment
+    IdentityPoolRoleAttachment:
+      Type: AWS::Cognito::IdentityPoolRoleMapping
+      Properties:
+        IdentityPoolId: !Ref IdentityPool
+        Roles:
+          authenticated: !GetAtt AuthenticatedRole.Arn
+
+  Outputs:
+    WebsiteURL:
+      Description: URL for the S3 website
+      Value: !Join ['', ['http://', !GetAtt WebsiteBucket.DomainName, '.s3-website-${self:provider.region}.amazonaws.com']]
+    ApiEndpoint:
+      Description: URL of the API Gateway endpoint
+      Value: !Sub "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${sls:stage}/data"
+    UserPoolId:
+      Description: ID of the Cognito User Pool
+      Value: !Ref UserPool
+    UserPoolClientId:
+      Description: ID of the Cognito User Pool Client
+      Value: !Ref UserPoolClient
+    IdentityPoolId:
+      Description: ID of the Cognito Identity Pool
+      Value: !Ref IdentityPool
