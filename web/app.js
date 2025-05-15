@@ -3,8 +3,9 @@ const config = {
     userPoolId: 'YOUR_USER_POOL_ID',
     userPoolClientId: 'YOUR_USER_POOL_CLIENT_ID',
     identityPoolId: 'YOUR_IDENTITY_POOL_ID',
-    region: 'us-east-1', // Change to your region
-    apiUrl: 'YOUR_API_ENDPOINT'
+    region: 'us-east-2', // Your AWS region
+    apiUrl: 'YOUR_API_ENDPOINT',
+    appUrl: 'http://localhost:8080' // This will be replaced during deployment
 };
 
 // DOM elements
@@ -48,7 +49,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Login function
 function login() {
     const authUrl = `https://${config.userPoolId.split('_')[0]}.auth.${config.region}.amazoncognito.com/login`;
-    const redirectUri = window.location.origin + '/callback.html';
+    const redirectUri = `${config.appUrl}/callback.html`;
     
     const queryParams = new URLSearchParams({
         client_id: config.userPoolClientId,

@@ -1,22 +1,20 @@
-service: cognito-serverless-app
-
-frameworkVersion: '3'
+service: cloudfront-cognito-app
 
 provider:
   name: aws
   runtime: nodejs18.x
-  region: us-east-2 # Change to your preferred region
+  region: us-east-2
   iam:
     role:
       statements:
         - Effect: Allow
           Action:
             - s3:GetObject
-          Resource: !Join ['', ['arn:aws:s3:::', !Ref WebsiteBucket, '/*']]
+          Resource: "arn:aws:s3:::#{WebsiteBucket}/*"
 
 custom:
-  s3Bucket: ${self:service}-website-${sls:stage}-${aws:accountId}
-
+  s3Bucket: ${self:service}-dbm-website-${sls:stage}-${aws:accountId}
+  
 functions:
   api:
     handler: api/handler.getData
@@ -29,6 +27,13 @@ functions:
             type: COGNITO_USER_POOLS
             authorizerId:
               Ref: ApiGatewayAuthorizer
+
+  # Custom resource function to set identity pool roles
+  setIdentityPoolRoles:
+    handler: functions/setIdentityPoolRoles.handler
+    environment:
+      IDENTITY_POOL_ID: !Ref IdentityPool
+      AUTHENTICATED_ROLE_ARN: !GetAtt AuthenticatedRole.Arn
 
 resources:
   Resources:
@@ -49,11 +54,6 @@ resources:
       Type: AWS::S3::Bucket
       Properties:
         BucketName: ${self:custom.s3Bucket}
-        PublicAccessBlockConfiguration:
-          BlockPublicAcls: false
-          BlockPublicPolicy: false
-          IgnorePublicAcls: false
-          RestrictPublicBuckets: false
         WebsiteConfiguration:
           IndexDocument: index.html
           ErrorDocument: error.html
@@ -64,7 +64,14 @@ resources:
               AllowedOrigins: ['*']
               MaxAge: 3000
 
-    # S3 bucket policy for public read access
+    # CloudFront Origin Access Identity
+    CloudFrontOriginAccessIdentity:
+      Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+      Properties:
+        CloudFrontOriginAccessIdentityConfig:
+          Comment: !Sub "OAI for ${self:service}-${sls:stage}"
+
+    # S3 bucket policy for CloudFront access
     WebsiteBucketPolicy:
       Type: AWS::S3::BucketPolicy
       Properties:
@@ -73,9 +80,43 @@ resources:
           Version: '2012-10-17'
           Statement:
             - Effect: Allow
-              Principal: '*'
+              Principal:
+                Service: cloudfront.amazonaws.com
               Action: 's3:GetObject'
               Resource: !Join ['', ['arn:aws:s3:::', !Ref WebsiteBucket, '/*']]
+              Condition:
+                StringEquals:
+                  AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+
+    # CloudFront Distribution
+    CloudFrontDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Enabled: true
+          DefaultRootObject: index.html
+          ViewerCertificate:
+            CloudFrontDefaultCertificate: true
+          Origins:
+            - Id: S3Origin
+              DomainName: !GetAtt WebsiteBucket.RegionalDomainName
+              S3OriginConfig:
+                OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}"
+          DefaultCacheBehavior:
+            AllowedMethods: [GET, HEAD, OPTIONS]
+            TargetOriginId: S3Origin
+            ForwardedValues:
+              QueryString: false
+              Cookies:
+                Forward: none
+            ViewerProtocolPolicy: redirect-to-https
+          CustomErrorResponses:
+            - ErrorCode: 403
+              ResponseCode: 200
+              ResponsePagePath: /index.html
+            - ErrorCode: 404
+              ResponseCode: 200
+              ResponsePagePath: /index.html
 
     # Cognito user pool
     UserPool:
@@ -113,10 +154,10 @@ resources:
           - openid
           - profile
         CallbackURLs:
-          - !Join ['', ['https://', !GetAtt WebsiteBucket.DomainName, '.s3-website-${self:provider.region}.amazonaws.com/callback.html']]
+          - !Sub "https://${CloudFrontDistribution.DomainName}/callback.html"
           - 'http://localhost:8080/callback.html'
         LogoutURLs:
-          - !Join ['', ['https://', !GetAtt WebsiteBucket.DomainName, '.s3-website-${self:provider.region}.amazonaws.com/index.html']]
+          - !Sub "https://${CloudFrontDistribution.DomainName}/index.html"
           - 'http://localhost:8080/index.html'
         SupportedIdentityProviders:
           - COGNITO
@@ -150,18 +191,83 @@ resources:
         ManagedPolicyArns:
           - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
 
-    # Identity pool role attachment
-    IdentityPoolRoleAttachment:
-      Type: AWS::Cognito::IdentityPoolRoleMapping
+    # Custom resource to set identity pool roles after creation
+    SetRolesCustomResource:
+      Type: Custom::SetIdentityPoolRoles
+      DependsOn: 
+        - IdentityPool
+        - AuthenticatedRole
+        - SetIdentityPoolRolesFunction
       Properties:
+        ServiceToken: !GetAtt SetIdentityPoolRolesFunction.Arn
         IdentityPoolId: !Ref IdentityPool
         Roles:
           authenticated: !GetAtt AuthenticatedRole.Arn
 
+    # Lambda function to set identity pool roles
+    SetIdentityPoolRolesFunction:
+      Type: AWS::Lambda::Function
+      Properties:
+        Handler: index.handler
+        Runtime: nodejs18.x
+        Role: !GetAtt SetIdentityPoolRolesFunctionRole.Arn
+        Code:
+          ZipFile: |
+            const AWS = require('aws-sdk');
+            const response = require('cfn-response');
+            
+            exports.handler = async (event, context) => {
+              console.log("REQUEST RECEIVED:", JSON.stringify(event));
+              
+              // For Delete operations, just succeed
+              if (event.RequestType === 'Delete') {
+                await response.send(event, context, response.SUCCESS);
+                return;
+              }
+              
+              const cognitoidentity = new AWS.CognitoIdentity();
+              const params = {
+                IdentityPoolId: event.ResourceProperties.IdentityPoolId,
+                Roles: {
+                  authenticated: event.ResourceProperties.Roles.authenticated
+                }
+              };
+              
+              try {
+                await cognitoidentity.setIdentityPoolRoles(params).promise();
+                await response.send(event, context, response.SUCCESS);
+              } catch (error) {
+                console.error("Error setting identity pool roles:", error);
+                await response.send(event, context, response.FAILED);
+              }
+            };
+
+    # IAM role for the Lambda function with fixed policy
+    SetIdentityPoolRolesFunctionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        Policies:
+          - PolicyName: CognitoAccess
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action: cognito-identity:SetIdentityPoolRoles
+                  Resource: !Sub "arn:aws:cognito-identity:${AWS::Region}:${AWS::AccountId}:identitypool/${IdentityPool}"
+
   Outputs:
     WebsiteURL:
-      Description: URL for the S3 website
-      Value: !Join ['', ['http://', !GetAtt WebsiteBucket.DomainName, '.s3-website-${self:provider.region}.amazonaws.com']]
+      Description: CloudFront URL for the website
+      Value: !Sub "https://${CloudFrontDistribution.DomainName}"
     ApiEndpoint:
       Description: URL of the API Gateway endpoint
       Value: !Sub "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${sls:stage}/data"
