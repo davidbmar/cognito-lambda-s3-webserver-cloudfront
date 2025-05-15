@@ -191,15 +191,14 @@ resources:
         ManagedPolicyArns:
           - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
 
-    # Custom resource to set identity pool roles after creation
+    # In the resources section, update the custom resource:
     SetRolesCustomResource:
       Type: Custom::SetIdentityPoolRoles
       DependsOn: 
         - IdentityPool
         - AuthenticatedRole
-        - SetIdentityPoolRolesFunction
       Properties:
-        ServiceToken: !GetAtt SetIdentityPoolRolesFunction.Arn
+        ServiceToken: !GetAtt SetIdentityPoolRolesLambdaFunction.Arn  # This is the Serverless naming convention
         IdentityPoolId: !Ref IdentityPool
         Roles:
           authenticated: !GetAtt AuthenticatedRole.Arn
