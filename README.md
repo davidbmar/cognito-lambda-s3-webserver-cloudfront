@@ -1,6 +1,6 @@
-# Serverless Web Application with Cognito Authentication
+# AWS Serverless Application with Cognito Authentication and CloudFront
 
-This repository contains a serverless web application using AWS services including S3, CloudFront, Cognito, Lambda, and API Gateway. The application provides a static website with user authentication and a secure backend API.
+This guide walks through setting up a complete serverless application on AWS with Cognito authentication, API Gateway, Lambda, S3 for web hosting, and CloudFront for secure HTTPS access.
 
 ## Architecture Overview
 
@@ -9,14 +9,14 @@ This repository contains a serverless web application using AWS services includi
 - **Frontend Hosting**: Amazon S3 for storage + CloudFront for HTTPS delivery
 - **Authentication**: Amazon Cognito User Pools and Identity Pools
 - **Backend API**: AWS Lambda functions accessed via API Gateway
-- **Deployment**: AWS Serverless Application Model (SAM) / Serverless Framework
+- **Deployment**: Serverless Framework
 
 ## Prerequisites
 
-1. AWS CLI installed and configured
-2. Node.js installed (v14+)
-3. Serverless Framework installed globally: `npm install -g serverless`
-4. Required IAM permissions (see section below)
+- AWS CLI installed and configured
+- Node.js (v14+) and npm installed
+- Serverless Framework installed: `npm install -g serverless`
+- Git
 
 ## Required IAM Permissions
 
@@ -53,40 +53,7 @@ The following AWS IAM permissions are needed to deploy this application:
 
 You can create a policy with these permissions and attach it to your IAM user or role.
 
-## Project Structure
-
-```
-.
-├── api/
-│   └── handler.js         # Lambda function for the API
-├── functions/
-│   └── setIdentityPoolRoles.js   # Utility Lambda for Cognito setup
-├── web/
-│   ├── index.html         # Main application page
-│   ├── callback.html      # Authentication callback page
-│   ├── app.js             # Frontend JavaScript
-│   └── styles.css         # CSS styles
-├── serverless.yml         # Serverless Framework configuration
-├── deploy.sh              # Deployment script
-└── README.md              # This documentation
-```
-
-## Setup Instructions
-
-### 1. Clone the Repository
-
-```bash
-git clone [repository-url]
-cd [repository-name]
-```
-
-### 2. Install Dependencies
-
-```bash
-npm install
-```
-
-### 3. Create/Update Configuration Files
+### 3. Setup Configuration
 
 The main configuration is in `serverless.yml`. Review and modify as needed:
 
@@ -94,75 +61,167 @@ The main configuration is in `serverless.yml`. Review and modify as needed:
 - Update the S3 bucket name pattern if desired
 - Review the Cognito settings and adjust as needed
 
-### 4. Deploy the Application
+The `app.js` file in the web directory contains frontend configuration that will be automatically updated during deployment:
+
+```javascript
+// Configuration - to be updated after deployment
+const config = {
+    userPoolId: 'YOUR_USER_POOL_ID',
+    userPoolClientId: 'YOUR_USER_POOL_CLIENT_ID',
+    identityPoolId: 'YOUR_IDENTITY_POOL_ID',
+    region: 'us-east-2',
+    apiUrl: 'YOUR_API_ENDPOINT',
+    appUrl: 'http://localhost:8080'
+};
+```
+
+These placeholders will be automatically replaced during deployment.
+
+### 4. Configure Serverless Framework
+
+The `serverless.yml` file defines all the AWS resources:
+
+- Lambda functions
+- API Gateway endpoints
+- Cognito User and Identity Pools
+- S3 bucket for web hosting
+- CloudFront distribution
+- IAM roles and permissions
+
+Key configurations to review:
+
+- **Region**: Defaults to `us-east-2` but can be changed
+- **S3 Bucket Name**: Generated using your account ID
+- **Cognito Settings**: User pool, client, and identity pool configurations
+
+### 5. Prepare the Web Application
+
+The frontend is pre-configured, but the `app.js` file has placeholders that will be automatically updated during deployment:
+
+```javascript
+// Configuration - to be updated after deployment
+const config = {
+    userPoolId: 'YOUR_USER_POOL_ID',
+    userPoolClientId: 'YOUR_USER_POOL_CLIENT_ID',
+    identityPoolId: 'YOUR_IDENTITY_POOL_ID',
+    region: 'us-east-2',
+    apiUrl: 'YOUR_API_ENDPOINT',
+    appUrl: 'http://localhost:8080'
+};
+```
+
+These placeholders will be automatically replaced during deployment.
+
+## Deployment
+
+### 1. Make the Deployment Script Executable
+
+```bash
+chmod +x deploy.sh
+```
+
+### 2. Run the Deployment
 
 ```bash
 ./deploy.sh
 ```
 
-The script will:
-1. Deploy all AWS resources using the Serverless Framework
-2. Extract outputs from the CloudFormation stack
-3. Update the frontend configuration with the deployed resource identifiers
-4. Upload the frontend files to the S3 bucket
-5. Trigger the Lambda function to set Identity Pool roles
+This script will:
 
-**Note**: The initial deployment can take 20-30 minutes, primarily due to CloudFront distribution creation.
+1. Deploy the serverless application using CloudFormation
+2. Get configuration outputs from the CloudFormation stack
+3. Update the web app configuration with actual AWS resource IDs
+4. Set up the Cognito Identity Pool roles
+5. Upload the website files to S3
+6. Configure the Cognito User Pool Client to use the CloudFront URL
 
-### 5. Test the Application
+### 3. Expected Output
 
-After deployment, the script will output:
-- Website URL (CloudFront URL)
-- API endpoint URL
-- User Pool ID
-- User Pool Client ID
-- Identity Pool ID
+After a successful deployment (which takes 3-5 minutes), you'll see output like:
 
-Visit the Website URL to test the application.
+```
+Deployment complete!
+Website URL: http://[your-bucket-name].s3-website.us-east-2.amazonaws.com
+CloudFront URL: https://[cloudfront-id].cloudfront.net
+API Endpoint: https://[api-id].execute-api.us-east-2.amazonaws.com/dev/data
+User Pool ID: us-east-2_[id]
+User Pool Client ID: [client-id]
+Identity Pool ID: us-east-2:[id]
+```
+
+**Note**: The CloudFront distribution takes 10-15 minutes to fully deploy.
 
 ## Creating a User
 
 Before you can log in, you'll need to create a user in the Cognito User Pool:
+
+```bash
+aws cognito-idp admin-create-user \
+  --user-pool-id [YOUR_USER_POOL_ID] \
+  --username test@example.com \
+  --temporary-password Test123! \
+  --message-action SUPPRESS
+
+aws cognito-idp admin-set-user-password \
+  --user-pool-id [YOUR_USER_POOL_ID] \
+  --username test@example.com \
+  --password Test123! \
+  --permanent
+```
+
+Replace `[YOUR_USER_POOL_ID]` with the User Pool ID from the deployment output.
+
+Alternatively, you can create a user through the AWS Console:
 
 1. Go to the AWS Console > Cognito > User Pools
 2. Select your User Pool (named something like "cloudfront-cognito-app-user-pool-dev")
 3. Go to "Users and groups" > "Create user"
 4. Enter the user details including email
 5. Click "Create user"
-6. Check your email for the temporary password
+6. Check your email for the temporary password (if you don't use `--message-action SUPPRESS`)
 
-## Accessing the Application
+## How Authentication Works
 
-1. Go to the CloudFront URL provided in the deployment output
-2. Click "Sign In" and enter the credentials for the user you created
-3. After authentication, you can click "Get Data from Lambda" to test the API call
+1. User clicks "Sign In" button
+2. They're redirected to the Cognito Hosted UI
+3. After successful login, Cognito redirects to the callback URL
+4. The callback page extracts tokens and stores them locally
+5. The tokens are used to authenticate API requests
 
-## Customizing the Application
+## Cleanup
 
-### Adding New API Endpoints
-
-1. Add a new function to `api/handler.js`
-2. Add the function to the `functions` section in `serverless.yml` with appropriate API Gateway configuration
-3. Update the frontend code to call the new endpoint
-
-### Modifying the Frontend
-
-Edit the files in the `web/` directory, then re-deploy the frontend:
+To avoid incurring AWS charges, remove all resources when not needed:
 
 ```bash
-aws s3 cp web/ s3://[your-bucket-name]/ --recursive
+serverless remove
 ```
 
-### Changing the Bucket Name
+This will delete all resources created by the CloudFormation stack.
 
-The S3 bucket name is defined in the `custom` section of `serverless.yml`:
+## Troubleshooting
 
-```yaml
-custom:
-  s3Bucket: ${self:service}-website-${sls:stage}-${aws:accountId}
-```
+### Common Issues:
 
-If you want to change it, update this parameter and redeploy.
+1. **"Client does not exist" error**: 
+   - Verify the User Pool Client ID in app.js matches the actual client ID
+   - Check if the CloudFront URL is correctly set in the Cognito User Pool Client
+
+2. **S3 bucket upload failures**:
+   - Check if the S3 bucket exists in your AWS account
+   - Verify the bucket name is correctly formatted in serverless.yml and deploy.sh
+
+3. **Authentication fails**:
+   - Ensure the Cognito User Pool Client has the correct callback URLs
+   - Check that your user was created successfully
+
+4. **API access denied**:
+   - Verify the API Gateway authorizer is correctly configured
+   - Check that the ID token is being passed in the Authorization header
+
+For detailed logs and debugging:
+- Check CloudWatch Logs for Lambda function logs
+- Use browser developer tools to inspect network requests
+- Run `serverless logs -f [function-name]` to see specific function logs
 
 ## Security Considerations
 
@@ -173,45 +232,6 @@ If you want to change it, update this parameter and redeploy.
 3. **API Security**: The API is protected by Cognito authentication. All requests require a valid JWT token.
 
 4. **HTTPS**: CloudFront serves content over HTTPS with a default CloudFront certificate.
-
-## Cleaning Up
-
-To avoid incurring charges, delete the resources when you're done:
-
-```bash
-serverless remove
-```
-
-Or, in the AWS Console, delete the CloudFormation stack named "cloudfront-cognito-app-dev".
-
-## Troubleshooting
-
-### Deployment Fails
-
-If deployment fails, check the CloudFormation stack events:
-
-```bash
-aws cloudformation describe-stack-events --stack-name cloudfront-cognito-app-dev
-```
-
-Common issues include:
-- Insufficient IAM permissions
-- Resource name conflicts
-- Service quotas/limits
-
-### Authentication Issues
-
-If you can't log in, verify:
-1. The user exists in Cognito User Pool
-2. The callback URL in app.js matches the one configured in Cognito
-3. The Cognito configuration in app.js is correct
-
-### API Calls Failing
-
-If the "Get Data" button doesn't work:
-1. Check the browser console for errors
-2. Verify the API Gateway endpoint is correct in app.js
-3. Ensure the Cognito token is being sent correctly in the request header
 
 ## Next Steps and Improvements
 
