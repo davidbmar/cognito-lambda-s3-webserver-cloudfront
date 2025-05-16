@@ -1,11 +1,14 @@
 // Configuration - to be updated after deployment
+//
+//
+//
 const config = {
-    userPoolId: 'YOUR_USER_POOL_ID',
-    userPoolClientId: 'YOUR_USER_POOL_CLIENT_ID',
-    identityPoolId: 'YOUR_IDENTITY_POOL_ID',
-    region: 'us-east-2', // Your AWS region
-    apiUrl: 'YOUR_API_ENDPOINT',
-    appUrl: 'http://localhost:8080' // This will be replaced during deployment
+    userPoolId: 'us-east-2_xGof4XEwA',          // From stack outputs
+    userPoolClientId: '5klu3u1d9em86f62hhj2r0nvg7',  // From stack outputs 
+    identityPoolId: 'us-east-2:5a42d5a1-2101-4197-973d-f6c86254bba2',    // From stack outputs
+    region: 'us-east-2',
+    apiUrl: 'https://7qgztkr7xe.execute-api.us-east-2.amazonaws.com/dev/data',            // From stack outputs
+    appUrl: 'http://localhost:8080'
 };
 
 // DOM elements

@@ -1,0 +1,68 @@
+service: test-cognito-custom-resource
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-2
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - cognito-identity:SetIdentityPoolRoles
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - iam:PassRole
+          Resource: !GetAtt AuthenticatedRole.Arn  # Specific to the role we're passing
+
+functions:
+  setIdentityPoolRoles:
+    handler: functions/setIdentityPoolRoles.handler
+    environment:
+      IDENTITY_POOL_ID: !Ref IdentityPool
+      AUTHENTICATED_ROLE_ARN: !GetAtt AuthenticatedRole.Arn
+
+resources:
+  Resources:
+    # Minimal Cognito identity pool
+    IdentityPool:
+      Type: AWS::Cognito::IdentityPool
+      Properties:
+        IdentityPoolName: ${self:service}-identity-pool
+        AllowUnauthenticatedIdentities: false
+
+    # Minimal IAM role
+    AuthenticatedRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Federated: cognito-identity.amazonaws.com
+              Action: sts:AssumeRoleWithWebIdentity
+              Condition:
+                StringEquals:
+                  cognito-identity.amazonaws.com:aud: !Ref IdentityPool
+        # Add a basic policy so the role has some permissions
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+    # Custom resource
+    SetRolesCustomResource:
+      Type: Custom::SetIdentityPoolRoles
+      DependsOn: 
+        - IdentityPool
+        - AuthenticatedRole
+      Properties:
+        ServiceToken: !GetAtt SetIdentityPoolRolesLambdaFunction.Arn
+        IdentityPoolId: !Ref IdentityPool
+        Roles:
+          authenticated: !GetAtt AuthenticatedRole.Arn
+
+  Outputs:
+    IdentityPoolId:
+      Description: ID of the Cognito Identity Pool
+      Value: !Ref IdentityPool
