@@ -4,7 +4,6 @@ provider:
   name: aws
   runtime: nodejs18.x
   region: us-east-2
-  disableDefaultLogs: true  # Prevent log group conflicts
   iam:
     role:
       statements:
@@ -77,19 +76,6 @@ resources:
               AllowedMethods: [GET, HEAD, PUT]
               AllowedOrigins: ['*']
               MaxAge: 3000
-
-    # Public bucket policy
-    WebsiteBucketPolicy:
-      Type: AWS::S3::BucketPolicy
-      Properties:
-        Bucket: !Ref WebsiteBucket
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Principal: '*'
-              Action: 's3:GetObject'
-              Resource: !Join ['', ['arn:aws:s3:::', !Ref WebsiteBucket, '/*']]
 
     # Cognito user pool
     UserPool:
@@ -173,11 +159,58 @@ resources:
         IdentityPoolId: !Ref IdentityPool
         Roles:
           authenticated: !GetAtt AuthenticatedRole.Arn
+    
+    CloudFrontDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Origins:
+            - DomainName: !GetAtt WebsiteBucket.DomainName
+              Id: S3Origin
+              S3OriginConfig:
+                OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}"
+          Enabled: true
+          DefaultRootObject: index.html
+          DefaultCacheBehavior:
+            AllowedMethods:
+              - GET
+              - HEAD
+            TargetOriginId: S3Origin
+            ForwardedValues:
+              QueryString: false
+              Cookies:
+                Forward: none
+            ViewerProtocolPolicy: redirect-to-https
+          ViewerCertificate:
+            CloudFrontDefaultCertificate: true
+    
+    CloudFrontOriginAccessIdentity:
+      Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+      Properties:
+        CloudFrontOriginAccessIdentityConfig:
+          Comment: "Access identity for S3 bucket"
+    
+    # Update the bucket policy to grant CloudFront access
+    WebsiteBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref WebsiteBucket
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
+              Action: 's3:GetObject'
+              Resource: !Join ['', ['arn:aws:s3:::', !Ref WebsiteBucket, '/*']]
 
   Outputs:
     WebsiteURL:
       Description: S3 Website URL
       Value: !GetAtt WebsiteBucket.WebsiteURL
+    WebsiteBucketName:
+      Description: Name of the S3 bucket for website hosting
+      Value: !Ref WebsiteBucket
     ApiEndpoint:
       Description: URL of the API Gateway endpoint
       Value: !Sub "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${sls:stage}/data"
@@ -190,3 +223,6 @@ resources:
     IdentityPoolId:
       Description: ID of the Cognito Identity Pool
       Value: !Ref IdentityPool
+    CloudFrontURL:
+      Description: URL of the CloudFront distribution
+      Value: !Sub "https://${CloudFrontDistribution.DomainName}"

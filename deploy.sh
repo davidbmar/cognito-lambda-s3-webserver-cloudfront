@@ -12,6 +12,18 @@ USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name cloudfront
 IDENTITY_POOL_ID=$(aws cloudformation describe-stacks --stack-name cloudfront-cognito-app-dev --query "Stacks[0].Outputs[?OutputKey=='IdentityPoolId'].OutputValue" --output text)
 API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name cloudfront-cognito-app-dev --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" --output text)
 WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name cloudfront-cognito-app-dev --query "Stacks[0].Outputs[?OutputKey=='WebsiteURL'].OutputValue" --output text)
+CLOUDFRONT_URL=$(aws cloudformation describe-stacks --stack-name cloudfront-cognito-app-dev --query "Stacks[0].Outputs[?OutputKey=='CloudFrontURL'].OutputValue" --output text)
+
+# Add this after getting the CloudFront URL
+aws cognito-idp update-user-pool-client \
+  --user-pool-id $USER_POOL_ID \
+  --client-id $USER_POOL_CLIENT_ID \
+  --callback-urls "${CLOUDFRONT_URL}/callback.html" \
+  --logout-urls "${CLOUDFRONT_URL}/index.html" \
+  --allowed-o-auth-flows "code" "implicit" \
+  --allowed-o-auth-scopes "email" "openid" "profile" \
+  --supported-identity-providers "COGNITO" \
+  --allowed-o-auth-flows-user-pool-client
 
 # Update the app.js file with the correct values
 echo "Updating app.js with deployment values..."
@@ -19,11 +31,20 @@ sed -i.bak "s|YOUR_USER_POOL_ID|$USER_POOL_ID|g" web/app.js
 sed -i.bak "s|YOUR_USER_POOL_CLIENT_ID|$USER_POOL_CLIENT_ID|g" web/app.js
 sed -i.bak "s|YOUR_IDENTITY_POOL_ID|$IDENTITY_POOL_ID|g" web/app.js
 sed -i.bak "s|YOUR_API_ENDPOINT|$API_ENDPOINT|g" web/app.js
-sed -i.bak "s|http://localhost:8080|$WEBSITE_URL|g" web/app.js
+#sed -i.bak "s|http://localhost:8080|$WEBSITE_URL|g" web/app.js
+sed -i.bak "s|http://localhost:8080|$CLOUDFRONT_URL|g" web/app.js
 
-# Get the S3 bucket name
+
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-BUCKET_NAME="cloudfront-cognito-app-website-dev-$ACCOUNT_ID"
+# Get the S3 bucket name from CloudFormation outputs
+BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name cloudfront-cognito-app-dev --query "Stacks[0].Outputs[?OutputKey=='WebsiteBucketName'].OutputValue" --output text)
+# If that doesn't work, fall back to constructing it manually
+if [ -z "$BUCKET_NAME" ]; then
+    echo "Warning: Couldn't get bucket name from outputs, constructing manually"
+    ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    BUCKET_NAME="cloudfront-cognito-app-dbm-website-dev-$ACCOUNT_ID"
+
+fi
 
 # Invoke the setIdentityPoolRoles function to ensure roles are properly set
 echo "Triggering the setIdentityPoolRoles Lambda function..."
