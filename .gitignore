@@ -24,3 +24,9 @@ node_modules/
 
 # Package directories
 jspm_packages/
+
+# Large binary installers
+*.pkg
+*.dmg
+*.exe
+*.msi
