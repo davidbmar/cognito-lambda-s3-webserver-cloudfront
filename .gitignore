@@ -1,11 +1,21 @@
 # Generated files
-serverless.yml
 web/app.js
+.env
+.serverless/
 *.bak
 
-# Node.js dependencies
+# Node.js
 node_modules/
+npm-debug.log
 .serverless/
+
+# AWS
+serverless.yml
+
+# Temporary files
+distribution-config*.json
+oac-config.json
+test.html
 
 # Logs
 *.log
