@@ -1,6 +1,6 @@
 #!/bin/bash
-# step2-deploy.sh - Deploys the CloudFront Cognito Serverless Application
-# Run this script after setup.sh
+# step2-deploy.sh - Deploy the CloudFront Cognito Serverless Application with OAC
+# Run this script after step1-setup.sh
 
 set -e # Exit on any error
 
@@ -13,7 +13,7 @@ echo
 
 # Check if .env exists
 if [ ! -f .env ]; then
-    echo "❌ .env file not found. Please run setup.sh first."
+    echo "❌ .env file not found. Please run step1-setup.sh first."
     exit 1
 fi
 
@@ -22,7 +22,7 @@ source .env
 
 # Validate required variables
 if [ -z "$APP_NAME" ] || [ -z "$STAGE" ] || [ -z "$S3_BUCKET_NAME" ] || [ -z "$COGNITO_DOMAIN" ]; then
-    echo "❌ Missing required variables in .env file. Please run setup.sh again."
+    echo "❌ Missing required variables in .env file. Please run step1-setup.sh again."
     exit 1
 fi
 
@@ -76,6 +76,256 @@ EOL
     npm install --legacy-peer-deps
 fi
 
+# Create or update serverless.yml to use Origin Access Control
+echo "📝 Updating serverless.yml with OAC configuration..."
+cat > serverless.yml << EOL
+service: ${APP_NAME}
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${REGION}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+          Resource: "arn:aws:s3:::#{WebsiteBucket}/*"
+        - Effect: Allow
+          Action:
+            - cognito-identity:SetIdentityPoolRoles
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - iam:PassRole
+          Resource: !GetAtt AuthenticatedRole.Arn
+
+custom:
+  s3Bucket: ${S3_BUCKET_NAME}
+  
+functions:
+  api:
+    handler: api/handler.getData
+    events:
+      - http:
+          path: data
+          method: get
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+
+  # Custom resource function to set identity pool roles
+  setIdentityPoolRoles:
+    handler: functions/setIdentityPoolRoles.handler
+    environment:
+      IDENTITY_POOL_ID: !Ref IdentityPool
+      AUTHENTICATED_ROLE_ARN: !GetAtt AuthenticatedRole.Arn
+
+resources:
+  Resources:
+    # API Gateway Authorizer
+    ApiGatewayAuthorizer:
+      Type: AWS::ApiGateway::Authorizer
+      Properties:
+        Name: cognito-authorizer
+        IdentitySource: method.request.header.Authorization
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        Type: COGNITO_USER_POOLS
+        ProviderARNs:
+          - !GetAtt UserPool.Arn
+
+    # S3 bucket for website hosting with public access
+    WebsiteBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${S3_BUCKET_NAME}
+        WebsiteConfiguration:
+          IndexDocument: index.html
+          ErrorDocument: error.html
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: false
+          BlockPublicPolicy: false
+          IgnorePublicAcls: false
+          RestrictPublicBuckets: false
+        CorsConfiguration:
+          CorsRules:
+            - AllowedHeaders: ['*']
+              AllowedMethods: [GET, HEAD, PUT]
+              AllowedOrigins: ['*']
+              MaxAge: 3000
+
+    # Cognito user pool
+    UserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: ${APP_NAME}-user-pool-${STAGE}
+        AutoVerifiedAttributes:
+          - email
+        UsernameAttributes:
+          - email
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireLowercase: true
+            RequireNumbers: true
+            RequireSymbols: false
+            RequireUppercase: true
+
+    # Cognito user pool client
+    UserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: ${APP_NAME}-app-client-${STAGE}
+        UserPoolId: !Ref UserPool
+        GenerateSecret: false
+        ExplicitAuthFlows:
+          - ALLOW_USER_SRP_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+        AllowedOAuthFlowsUserPoolClient: true
+        AllowedOAuthFlows:
+          - implicit
+          - code
+        AllowedOAuthScopes:
+          - email
+          - openid
+          - profile
+        CallbackURLs:
+          - 'http://localhost:8080/callback.html'
+        LogoutURLs:
+          - 'http://localhost:8080/index.html'
+        SupportedIdentityProviders:
+          - COGNITO
+
+    # Cognito identity pool
+    IdentityPool:
+      Type: AWS::Cognito::IdentityPool
+      Properties:
+        IdentityPoolName: ${APP_NAME}-identity-pool-${STAGE}
+        AllowUnauthenticatedIdentities: false
+        CognitoIdentityProviders:
+          - ClientId: !Ref UserPoolClient
+            ProviderName: !GetAtt UserPool.ProviderName
+
+    # IAM roles for authenticated users
+    AuthenticatedRole:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Federated: cognito-identity.amazonaws.com
+              Action: sts:AssumeRoleWithWebIdentity
+              Condition:
+                StringEquals:
+                  cognito-identity.amazonaws.com:aud: !Ref IdentityPool
+                ForAnyValue:StringLike:
+                  cognito-identity.amazonaws.com:amr: authenticated
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+    # Custom resource to set identity pool roles after creation
+    SetRolesCustomResource:
+      Type: Custom::SetIdentityPoolRoles
+      DependsOn: 
+        - IdentityPool
+        - AuthenticatedRole
+      Properties:
+        ServiceToken: !GetAtt SetIdentityPoolRolesLambdaFunction.Arn
+        IdentityPoolId: !Ref IdentityPool
+        Roles:
+          authenticated: !GetAtt AuthenticatedRole.Arn
+    
+    # Origin Access Control for CloudFront
+    CloudFrontOriginAccessControl:
+      Type: AWS::CloudFront::OriginAccessControl
+      Properties:
+        OriginAccessControlConfig:
+          Name: ${APP_NAME}-OAC
+          OriginAccessControlOriginType: s3
+          SigningBehavior: always
+          SigningProtocol: sigv4
+    
+    CloudFrontDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Origins:
+            - DomainName: !GetAtt WebsiteBucket.RegionalDomainName
+              Id: S3Origin
+              OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
+              S3OriginConfig:
+                OriginAccessIdentity: ""
+          Enabled: true
+          DefaultRootObject: index.html
+          DefaultCacheBehavior:
+            AllowedMethods:
+              - GET
+              - HEAD
+            TargetOriginId: S3Origin
+            ForwardedValues:
+              QueryString: false
+              Cookies:
+                Forward: none
+            ViewerProtocolPolicy: redirect-to-https
+          CustomErrorResponses:
+            - ErrorCode: 403
+              ResponsePagePath: /index.html
+              ResponseCode: 200
+              ErrorCachingMinTTL: 10
+            - ErrorCode: 404
+              ResponsePagePath: /index.html
+              ResponseCode: 200
+              ErrorCachingMinTTL: 10
+          ViewerCertificate:
+            CloudFrontDefaultCertificate: true
+    
+    # Bucket policy for CloudFront OAC access
+    WebsiteBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        Bucket: !Ref WebsiteBucket
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: cloudfront.amazonaws.com
+              Action: s3:GetObject
+              Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/*"
+              Condition:
+                StringEquals:
+                  AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+
+  Outputs:
+    WebsiteURL:
+      Description: S3 Website URL
+      Value: !GetAtt WebsiteBucket.WebsiteURL
+    WebsiteBucketName:
+      Description: Name of the S3 bucket for website hosting
+      Value: !Ref WebsiteBucket
+    ApiEndpoint:
+      Description: URL of the API Gateway endpoint
+      Value: !Sub "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${sls:stage}/data"
+    UserPoolId:
+      Description: ID of the Cognito User Pool
+      Value: !Ref UserPool
+    UserPoolClientId:
+      Description: ID of the Cognito User Pool Client
+      Value: !Ref UserPoolClient
+    IdentityPoolId:
+      Description: ID of the Cognito Identity Pool
+      Value: !Ref IdentityPool
+    CloudFrontURL:
+      Description: URL of the CloudFront distribution
+      Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+EOL
+
 # Deploy the serverless application
 echo "🚀 Deploying serverless application..."
 npx serverless deploy --stage $STAGE
@@ -127,6 +377,7 @@ sed -i.bak "s|USER_POOL_CLIENT_ID=.*$|USER_POOL_CLIENT_ID=$USER_POOL_CLIENT_ID|g
 sed -i.bak "s|IDENTITY_POOL_ID=.*$|IDENTITY_POOL_ID=$IDENTITY_POOL_ID|g" .env
 sed -i.bak "s|CLOUDFRONT_URL=.*$|CLOUDFRONT_URL=$CLOUDFRONT_URL|g" .env
 sed -i.bak "s|COGNITO_DOMAIN=.*$|COGNITO_DOMAIN=$COGNITO_DOMAIN|g" .env
+sed -i.bak "s|WEBSITE_URL=.*$|WEBSITE_URL=$WEBSITE_URL|g" .env
 
 # Update the app.js file with the correct values
 echo "📝 Updating app.js with deployment values..."
@@ -153,49 +404,6 @@ else
     exit 1
 fi
 
-# Configure CloudFront for proper handling of SPA routing
-echo "⚙️ Configuring CloudFront for SPA routing..."
-DISTRIBUTION_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?DomainName=='$(echo $CLOUDFRONT_URL | sed 's|https://||')'].Id" --output text)
-
-if [ -n "$DISTRIBUTION_ID" ]; then
-    echo "📝 Adding custom error responses to CloudFront distribution..."
-    ETAG=$(aws cloudfront get-distribution-config --id $DISTRIBUTION_ID --query ETag --output text)
-    
-    # Create a temporary file for the updated config
-    CONFIG_FILE=$(mktemp)
-    aws cloudfront get-distribution-config --id $DISTRIBUTION_ID > $CONFIG_FILE
-    
-    # Check if custom error responses already exist
-    ERROR_RESPONSES_COUNT=$(grep -c "ErrorCode" $CONFIG_FILE || echo "0")
-    
-    if [ "$ERROR_RESPONSES_COUNT" == "0" ]; then
-        # Add custom error responses manually since jq may not be available
-        TMP_FILE=$(mktemp)
-        sed 's/"CustomErrorResponses": {[^}]*}/&, "Quantity": 2, "Items": [{"ErrorCode": 403, "ResponsePagePath": "\/index.html", "ResponseCode": "200", "ErrorCachingMinTTL": 10}, {"ErrorCode": 404, "ResponsePagePath": "\/index.html", "ResponseCode": "200", "ErrorCachingMinTTL": 10}]/' $CONFIG_FILE > $TMP_FILE
-        mv $TMP_FILE $CONFIG_FILE
-        
-        # Remove ETag from the config
-        grep -v "ETag" $CONFIG_FILE > $TMP_FILE
-        mv $TMP_FILE $CONFIG_FILE
-        
-        # Update the distribution
-        aws cloudfront update-distribution --id $DISTRIBUTION_ID --if-match $ETAG --distribution-config file://$CONFIG_FILE
-        echo "✅ Added custom error responses to CloudFront distribution"
-    else
-        echo "✅ Custom error responses already configured"
-    fi
-    
-    # Clean up
-    rm -f $CONFIG_FILE
-    
-    # Create a CloudFront invalidation
-    echo "🔄 Creating CloudFront invalidation..."
-    aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*"
-    echo "✅ Created CloudFront invalidation for all paths"
-else
-    echo "⚠️ Warning: Could not determine CloudFront distribution ID"
-fi
-
 # Invoke the setIdentityPoolRoles function to ensure roles are properly set
 echo "⚙️ Triggering the setIdentityPoolRoles Lambda function..."
 FUNCTION_NAME="${APP_NAME}-${STAGE}-setIdentityPoolRoles"
@@ -204,6 +412,16 @@ aws lambda invoke --function-name $FUNCTION_NAME --invocation-type Event /dev/nu
 # Upload the website files to S3
 echo "📤 Uploading website files to S3..."
 aws s3 cp web/ s3://$S3_BUCKET_NAME/ --recursive
+
+# Create a CloudFront invalidation
+echo "🔄 Creating CloudFront invalidation..."
+DISTRIBUTION_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?DomainName=='$(echo $CLOUDFRONT_URL | sed 's|https://||')'].Id" --output text)
+if [ -n "$DISTRIBUTION_ID" ]; then
+    aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*"
+    echo "✅ Created CloudFront invalidation for all paths"
+else
+    echo "⚠️ Warning: Could not determine CloudFront distribution ID"
+fi
 
 echo
 echo "✅ Deployment completed successfully!"
@@ -217,7 +435,7 @@ echo "   API Endpoint: $API_ENDPOINT"
 echo "   User Pool ID: $USER_POOL_ID"
 echo "   User Pool Client ID: $USER_POOL_CLIENT_ID"
 echo "   Identity Pool ID: $IDENTITY_POOL_ID"
-echo "   Cognito Domain: ${COGNITO_DOMAIN}.auth.${AWS_REGION}.amazoncognito.com"
+echo "   Cognito Domain: ${COGNITO_DOMAIN}.auth.${REGION}.amazoncognito.com"
 echo
 echo "⚠️ Note: It may take a few minutes for the CloudFront distribution to fully deploy."
 echo "⚠️ You need to create a user in the Cognito User Pool to test the authentication."

@@ -1,4 +1,5 @@
 # Generated files
+serverless.yml
 web/app.js
 *.bak
 
