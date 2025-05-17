@@ -1,6 +1,6 @@
 #!/bin/bash
-# step2-deploy.sh - Deploy the CloudFront Cognito Serverless Application with OAC
-# Run this script after step1-setup.sh
+# step-20-deploy.sh - Deploy the CloudFront Cognito Serverless Application with OAC
+# Run this script after step-10-setup.sh
 
 set -e # Exit on any error
 
@@ -13,7 +13,7 @@ echo
 
 # Check if .env exists
 if [ ! -f .env ]; then
-    echo "❌ .env file not found. Please run step1-setup.sh first."
+    echo "❌ .env file not found. Please run step-10-setup.sh first."
     exit 1
 fi
 
@@ -22,7 +22,7 @@ source .env
 
 # Validate required variables
 if [ -z "$APP_NAME" ] || [ -z "$STAGE" ] || [ -z "$S3_BUCKET_NAME" ] || [ -z "$COGNITO_DOMAIN" ]; then
-    echo "❌ Missing required variables in .env file. Please run step1-setup.sh again."
+    echo "❌ Missing required variables in .env file. Please run step-10-setup.sh again."
     exit 1
 fi
 
@@ -78,13 +78,16 @@ fi
 
 # Create or update serverless.yml to use Origin Access Control
 echo "📝 Updating serverless.yml with OAC configuration..."
-cat > serverless.yml << EOL
-service: ${APP_NAME}
+
+# Use a different approach to create the serverless.yml file
+# This prevents bash from interpreting the special characters in the template
+cat > serverless.yml << 'SERVERLESSYML'
+service: APP_NAME_PLACEHOLDER
 
 provider:
   name: aws
   runtime: nodejs18.x
-  region: ${REGION}
+  region: REGION_PLACEHOLDER
   iam:
     role:
       statements:
@@ -102,7 +105,7 @@ provider:
           Resource: !GetAtt AuthenticatedRole.Arn
 
 custom:
-  s3Bucket: ${S3_BUCKET_NAME}
+  s3Bucket: S3_BUCKET_NAME_PLACEHOLDER
   
 functions:
   api:
@@ -142,7 +145,7 @@ resources:
     WebsiteBucket:
       Type: AWS::S3::Bucket
       Properties:
-        BucketName: ${S3_BUCKET_NAME}
+        BucketName: S3_BUCKET_NAME_PLACEHOLDER
         WebsiteConfiguration:
           IndexDocument: index.html
           ErrorDocument: error.html
@@ -162,7 +165,7 @@ resources:
     UserPool:
       Type: AWS::Cognito::UserPool
       Properties:
-        UserPoolName: ${APP_NAME}-user-pool-${STAGE}
+        UserPoolName: APP_NAME_PLACEHOLDER-user-pool-STAGE_PLACEHOLDER
         AutoVerifiedAttributes:
           - email
         UsernameAttributes:
@@ -179,7 +182,7 @@ resources:
     UserPoolClient:
       Type: AWS::Cognito::UserPoolClient
       Properties:
-        ClientName: ${APP_NAME}-app-client-${STAGE}
+        ClientName: APP_NAME_PLACEHOLDER-app-client-STAGE_PLACEHOLDER
         UserPoolId: !Ref UserPool
         GenerateSecret: false
         ExplicitAuthFlows:
@@ -204,7 +207,7 @@ resources:
     IdentityPool:
       Type: AWS::Cognito::IdentityPool
       Properties:
-        IdentityPoolName: ${APP_NAME}-identity-pool-${STAGE}
+        IdentityPoolName: APP_NAME_PLACEHOLDER-identity-pool-STAGE_PLACEHOLDER
         AllowUnauthenticatedIdentities: false
         CognitoIdentityProviders:
           - ClientId: !Ref UserPoolClient
@@ -246,7 +249,7 @@ resources:
       Type: AWS::CloudFront::OriginAccessControl
       Properties:
         OriginAccessControlConfig:
-          Name: ${APP_NAME}-OAC
+          Name: APP_NAME_PLACEHOLDER-OAC
           OriginAccessControlOriginType: s3
           SigningBehavior: always
           SigningProtocol: sigv4
@@ -324,7 +327,13 @@ resources:
     CloudFrontURL:
       Description: URL of the CloudFront distribution
       Value: !Sub "https://${CloudFrontDistribution.DomainName}"
-EOL
+SERVERLESSYML
+
+# Now replace the placeholders with the actual values
+sed -i.bak "s/APP_NAME_PLACEHOLDER/$APP_NAME/g" serverless.yml
+sed -i.bak "s/REGION_PLACEHOLDER/$REGION/g" serverless.yml
+sed -i.bak "s/S3_BUCKET_NAME_PLACEHOLDER/$S3_BUCKET_NAME/g" serverless.yml
+sed -i.bak "s/STAGE_PLACEHOLDER/$STAGE/g" serverless.yml
 
 # Deploy the serverless application
 echo "🚀 Deploying serverless application..."
@@ -439,7 +448,7 @@ echo "   Cognito Domain: ${COGNITO_DOMAIN}.auth.${REGION}.amazoncognito.com"
 echo
 echo "⚠️ Note: It may take a few minutes for the CloudFront distribution to fully deploy."
 echo "⚠️ You need to create a user in the Cognito User Pool to test the authentication."
-echo "   Run './step3-create-user.sh' to create a test user."
+echo "   Run './step-30-create-user.sh' to create a test user."
 echo
 echo "⚠️ IMPORTANT: Do not commit web/app.js to version control as it contains environment-specific values."
 echo "   Only commit web/app.js.template and let the deployment script generate app.js during deployment."
