@@ -1,9 +1,9 @@
-service: cloudfront-cognito-app
+service: ${env:APP_NAME, 'cloudfront-cognito-app'}
 
 provider:
   name: aws
   runtime: nodejs18.x
-  region: us-east-2
+  region: ${env:REGION, 'us-east-2'}
   iam:
     role:
       statements:
@@ -21,7 +21,7 @@ provider:
           Resource: !GetAtt AuthenticatedRole.Arn
 
 custom:
-  s3Bucket: ${self:service}-david-test-website-${sls:stage}-${aws:accountId}
+  s3Bucket: ${env:S3_BUCKET_NAME, '${self:service}-website-${sls:stage}-${aws:accountId}'}
   
 functions:
   api:
@@ -181,6 +181,15 @@ resources:
               Cookies:
                 Forward: none
             ViewerProtocolPolicy: redirect-to-https
+          CustomErrorResponses:
+            - ErrorCode: 403
+              ResponsePagePath: /index.html
+              ResponseCode: 200
+              ErrorCachingMinTTL: 10
+            - ErrorCode: 404
+              ResponsePagePath: /index.html
+              ResponseCode: 200
+              ErrorCachingMinTTL: 10
           ViewerCertificate:
             CloudFrontDefaultCertificate: true
     
