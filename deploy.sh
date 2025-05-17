@@ -25,25 +25,39 @@ aws cognito-idp update-user-pool-client \
   --supported-identity-providers "COGNITO" \
   --allowed-o-auth-flows-user-pool-client
 
-# Get the Cognito domain - Fixed method
+# Improved Cognito domain detection
 echo "Checking for Cognito domain..."
-# Get the user pool to check if it has a domain
-USER_POOL_DETAILS=$(aws cognito-idp describe-user-pool --user-pool-id $USER_POOL_ID)
-# Extract the domain name if it exists using grep and cut
-DOMAIN_NAME=$(echo "$USER_POOL_DETAILS" | grep -A 2 "Domain" | grep "Name" | cut -d'"' -f4)
+# Use describe-user-pool-domain command to check if a domain exists for the pool
+DOMAIN_CHECK=$(aws cognito-idp describe-user-pool --user-pool-id $USER_POOL_ID)
+DOMAIN_NAME=$(echo "$DOMAIN_CHECK" | grep -A 3 "Domain" | grep ":" | cut -d'"' -f4)
 
-# If domain is empty, create one
-if [ -z "$DOMAIN_NAME" ]; then
-    echo "No Cognito domain found. Creating one..."
-    # Generate a unique domain name based on timestamp
-    DOMAIN_NAME="cloudfront-cognito-app-$(date +%s)"
-    # Create the domain
-    aws cognito-idp create-user-pool-domain \
-      --domain $DOMAIN_NAME \
-      --user-pool-id $USER_POOL_ID
-    echo "Created domain: $DOMAIN_NAME"
+if [ -z "$DOMAIN_NAME" ] || [ "$DOMAIN_NAME" == "null" ]; then
+    echo "No domain found. Let's try checking for active domains..."
+    
+    # Try to get the active domain directly from AWS Console screen
+    read -p "Please go to AWS Console > Cognito > User Pools > App Integration tab and check if there's a domain. If yes, enter it here (without .auth.region.amazoncognito.com): " DOMAIN_NAME
+    
+    if [ -z "$DOMAIN_NAME" ]; then
+        echo "No domain provided. Creating a new one..."
+        DOMAIN_NAME="cloudfront-cognito-app-$(date +%s)"
+        
+        # Try to create the domain
+        if aws cognito-idp create-user-pool-domain --domain $DOMAIN_NAME --user-pool-id $USER_POOL_ID; then
+            echo "Successfully created domain: $DOMAIN_NAME"
+        else
+            echo "Failed to create domain. Please check AWS Console and manually create a domain."
+            read -p "Enter the domain you created (without .auth.region.amazoncognito.com): " DOMAIN_NAME
+            
+            if [ -z "$DOMAIN_NAME" ]; then
+                echo "No domain provided. Cannot continue without a domain."
+                exit 1
+            fi
+        fi
+    else
+        echo "Using existing domain: $DOMAIN_NAME"
+    fi
 else
-    echo "Found existing domain: $DOMAIN_NAME"
+    echo "Found domain: $DOMAIN_NAME"
 fi
 
 # Update the app.js file with the correct values
