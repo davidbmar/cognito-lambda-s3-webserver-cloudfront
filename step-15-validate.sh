@@ -1,24 +1,28 @@
 #!/bin/bash
-# validate-env.sh - Validates environment configuration and resource status
-# Use this script between deployment steps to verify everything is ready to proceed
+# step-15-validate.sh - Validates the completion of specific steps in the workflow
+# Run this after each step to verify everything is ready for the next step
 
 set -e # Exit on any error
 
 print_header() {
   echo "=================================================="
   echo "   CloudFront Cognito Serverless Application     "
-  echo "          Environment Validation Tool            "
+  echo "             Step Validation Tool                "
   echo "=================================================="
   echo
 }
 
-check_env_file() {
-  echo "🔍 Checking environment configuration..."
+# Validate that step-10-setup.sh ran correctly
+validate_step_10() {
+  echo "🔍 Validating that step-10-setup.sh completed successfully..."
+  
+  # Check if .env exists
   if [ ! -f .env ]; then
     echo "❌ .env file not found. Please run step-10-setup.sh first."
-    exit 1
+    return 1
   fi
 
+  # Load environment variables
   source .env
   
   # Check required variables
@@ -34,14 +38,43 @@ check_env_file() {
   if [ ${#missing_vars[@]} -gt 0 ]; then
     echo "❌ Missing required variables in .env file: ${missing_vars[*]}"
     echo "Please run step-10-setup.sh again."
-    exit 1
+    return 1
+  fi
+
+  # Check that app.js.template exists
+  if [ ! -f web/app.js.template ]; then
+    echo "❌ web/app.js.template not found. Please run step-10-setup.sh again."
+    return 1
   fi
   
-  echo "✅ Environment configuration looks good."
+  # Check that required directories exist
+  for dir in web api functions; do
+    if [ ! -d "$dir" ]; then
+      echo "❌ Directory '$dir' not found. Please run step-10-setup.sh again."
+      return 1
+    fi
+  done
+  
+  echo "✅ step-10-setup.sh completed successfully!"
+  echo "   - .env file created with all required variables"
+  echo "   - All required directories and templates are in place"
+  echo
+  echo "You can now proceed to step-20-deploy.sh"
+  return 0
 }
 
-check_deployment_status() {
-  echo "🔍 Checking deployment status..."
+# Validate that step-20-deploy.sh ran correctly
+validate_step_20() {
+  echo "🔍 Validating that step-20-deploy.sh completed successfully..."
+  
+  # First check if step-10 was completed
+  if ! validate_step_10 > /dev/null; then
+    echo "❌ step-10-setup.sh has not been completed successfully."
+    echo "Please run step-10-setup.sh first, then validate with option 1."
+    return 1
+  fi
+  
+  # Load environment variables
   source .env
   
   # Check if stack exists
@@ -52,91 +85,49 @@ check_deployment_status() {
     return 1
   fi
   
-  echo "✅ CloudFormation stack exists."
+  # Check if outputs were populated in .env
+  if [ -z "$USER_POOL_ID" ] || [ -z "$CLOUDFRONT_URL" ]; then
+    echo "❌ Missing deployment outputs in .env file."
+    echo "Please run step-20-deploy.sh again to ensure all outputs are captured."
+    return 1
+  fi
   
-  # Check S3 bucket
+  # Check if S3 bucket was created
   if ! aws s3api head-bucket --bucket $S3_BUCKET_NAME &> /dev/null; then
     echo "❌ S3 bucket '$S3_BUCKET_NAME' not found or not accessible."
-    echo "Please run step-20-deploy.sh to deploy the application."
-    return 1
-  fi
-  echo "✅ S3 bucket exists and is accessible."
-  
-  # Check CloudFront distribution
-  if [ -z "$CLOUDFRONT_URL" ]; then
-    echo "⚠️ CloudFront URL not found in .env file."
-    echo "The deployment might not be complete. Please run step-20-deploy.sh."
+    echo "Please run step-20-deploy.sh again."
     return 1
   fi
   
-  # Check Cognito User Pool
-  if [ -z "$USER_POOL_ID" ]; then
-    echo "⚠️ User Pool ID not found in .env file."
-    echo "The deployment might not be complete. Please run step-20-deploy.sh."
+  # Check if Cognito domain was created and matches .env
+  local domain_check
+  domain_check=$(aws cognito-idp describe-user-pool --user-pool-id $USER_POOL_ID --query "UserPool.Domain" --output text 2>/dev/null || echo "")
+  
+  if [ -z "$domain_check" ] || [ "$domain_check" == "None" ]; then
+    echo "❌ No Cognito domain found for User Pool."
+    echo "Please run step-20-deploy.sh again."
     return 1
   fi
   
-  echo "✅ All required resources exist."
-  return 0
-}
-
-check_cognito_domain() {
-  echo "🔍 Checking Cognito domain..."
-  source .env
-  
-  if [ -z "$COGNITO_DOMAIN" ] || [ -z "$USER_POOL_ID" ]; then
-    echo "❌ Missing Cognito domain or User Pool ID in .env file."
-    echo "Please run step-20-deploy.sh to deploy Cognito resources."
-    return 1
-  fi
-  
-  # Check if domain exists in Cognito
-  local domain_status
-  domain_status=$(aws cognito-idp describe-user-pool-domain --domain $COGNITO_DOMAIN --query "DomainDescription.Status" --output text 2>/dev/null || echo "NOT_FOUND")
-  
-  if [ "$domain_status" = "ACTIVE" ]; then
-    echo "✅ Cognito domain is active: $COGNITO_DOMAIN.auth.$REGION.amazoncognito.com"
-    
-    # Validate that app.js is using the correct domain
-    if [ -f web/app.js ]; then
-      if grep -q "$COGNITO_DOMAIN" web/app.js; then
-        echo "✅ App.js appears to be using the correct Cognito domain."
-      else
-        echo "❌ App.js might be using an incorrect Cognito domain."
-        echo "Please update app.js with the correct domain or re-run step-20-deploy.sh."
-        return 1
-      fi
-    fi
-    
-    return 0
-  elif [ "$domain_status" = "CREATING" ]; then
-    echo "⚠️ Cognito domain is still being created. Please wait a few minutes and try again."
-    return 1
-  else
-    echo "❌ Cognito domain '$COGNITO_DOMAIN' not found or not active."
-    
-    # Check if there's another active domain for this user pool
-    local active_domains
-    active_domains=$(aws cognito-idp describe-user-pool --user-pool-id $USER_POOL_ID --query "UserPool.Domain" --output text 2>/dev/null || echo "")
-    
-    if [ -n "$active_domains" ] && [ "$active_domains" != "None" ]; then
-      echo "⚠️ Found another active domain for this User Pool: $active_domains"
-      echo "Would you like to update your .env file to use this domain? (y/n)"
-      read -r response
-      if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
-        # Update .env file
-        sed -i.bak "s|COGNITO_DOMAIN=.*$|COGNITO_DOMAIN=$active_domains|g" .env
-        source .env
-        echo "✅ Updated .env file with the active domain: $active_domains"
-        
-        # Update app.js
-        if [ -f web/app.js ]; then
-          sed -i.bak "s|YOUR_COGNITO_DOMAIN_PREFIX|$active_domains|g" web/app.js
-          echo "✅ Updated app.js with the active domain."
+  if [ "$domain_check" != "$COGNITO_DOMAIN" ]; then
+    echo "⚠️ Mismatch between Cognito domain in .env ($COGNITO_DOMAIN) and actual domain ($domain_check)."
+    echo "Would you like to update your .env file to use the correct domain? (y/n)"
+    read -r response
+    if [[ "$response" =~ ^([yY][eE][sS]|[yY])$ ]]; then
+      # Update .env file
+      sed -i.bak "s|COGNITO_DOMAIN=.*$|COGNITO_DOMAIN=$domain_check|g" .env
+      source .env
+      echo "✅ Updated .env file with the correct domain: $domain_check"
+      
+      # Check if app.js needs updating
+      if [ -f web/app.js ]; then
+        if ! grep -q "$domain_check" web/app.js; then
+          echo "⚠️ app.js is using an incorrect domain. Updating..."
+          sed -i.bak "s|https://[^\.]*\.auth|https://$domain_check.auth|g" web/app.js
           
           # Upload to S3
           aws s3 cp web/app.js s3://$S3_BUCKET_NAME/app.js
-          echo "✅ Uploaded updated app.js to S3."
+          echo "✅ Updated app.js with the correct domain and uploaded to S3."
           
           # Create CloudFront invalidation
           DISTRIBUTION_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?contains(DomainName, '$(echo $CLOUDFRONT_URL | sed 's|https://||')')]|[0].Id" --output text)
@@ -145,41 +136,80 @@ check_cognito_domain() {
             echo "✅ Created CloudFront invalidation for /app.js"
           fi
         fi
-        
-        return 0
       fi
+    else
+      echo "⚠️ You should update the domain manually to continue."
     fi
-    
-    echo "Please run step-20-deploy.sh to deploy Cognito resources with the correct domain."
     return 1
   fi
+  
+  # Check app.js
+  if [ ! -f web/app.js ]; then
+    echo "❌ web/app.js not found. It should have been created during deployment."
+    echo "Please run step-20-deploy.sh again."
+    return 1
+  fi
+  
+  # Check if app.js has the correct domain
+  if ! grep -q "$COGNITO_DOMAIN" web/app.js; then
+    echo "❌ app.js does not contain the correct Cognito domain."
+    echo "Please run step-20-deploy.sh again or manually update app.js."
+    return 1
+  fi
+  
+  echo "✅ step-20-deploy.sh completed successfully!"
+  echo "   - CloudFormation stack created"
+  echo "   - S3 bucket created"
+  echo "   - Cognito resources created"
+  echo "   - CloudFront distribution deployed"
+  echo "   - app.js properly configured"
+  echo
+  echo "You can now proceed to step-30-create-user.sh"
+  return 0
 }
 
-check_cognito_users() {
-  echo "🔍 Checking for Cognito users..."
+# Validate that step-30-create-user.sh ran correctly
+validate_step_30() {
+  echo "🔍 Validating that step-30-create-user.sh completed successfully..."
+  
+  # First check if step-20 was completed
+  if ! validate_step_20 > /dev/null; then
+    echo "❌ step-20-deploy.sh has not been completed successfully."
+    echo "Please run step-20-deploy.sh first, then validate with option 2."
+    return 1
+  fi
+  
+  # Load environment variables
   source .env
   
+  # Check if there are users in the Cognito User Pool
   if [ -z "$USER_POOL_ID" ]; then
-    echo "❌ User Pool ID not found in .env file."
-    echo "Please run step-20-deploy.sh to deploy Cognito resources."
+    echo "❌ USER_POOL_ID not found in .env file."
+    echo "Please run step-20-deploy.sh again."
     return 1
   fi
   
   local user_count
   user_count=$(aws cognito-idp list-users --user-pool-id $USER_POOL_ID --query "length(Users)" --output text)
   
-  if [ "$user_count" -gt 0 ]; then
-    echo "✅ Found $user_count user(s) in the Cognito User Pool."
-    return 0
-  else
-    echo "⚠️ No users found in the Cognito User Pool."
+  if [ "$user_count" -eq 0 ]; then
+    echo "❌ No users found in the Cognito User Pool."
     echo "Please run step-30-create-user.sh to create a test user."
     return 1
   fi
+  
+  echo "✅ step-30-create-user.sh completed successfully!"
+  echo "   - Found $user_count user(s) in the Cognito User Pool"
+  echo
+  echo "You can now check if DNS has propagated (option 4) or proceed to step-40-test.sh"
+  return 0
 }
 
+# Check if DNS has propagated for the Cognito domain
 check_dns_propagation() {
-  echo "🔍 Checking DNS propagation for Cognito domain..."
+  echo "🔍 Checking if DNS has propagated for the Cognito domain..."
+  
+  # Load environment variables
   source .env
   
   if [ -z "$COGNITO_DOMAIN" ] || [ -z "$REGION" ]; then
@@ -189,93 +219,127 @@ check_dns_propagation() {
   
   local domain="${COGNITO_DOMAIN}.auth.${REGION}.amazoncognito.com"
   
-  # Try to resolve the domain using dig or nslookup
+  # Try to resolve the domain
   if command -v dig &> /dev/null; then
     if dig +short "$domain" | grep -q .; then
       echo "✅ DNS resolution successful for $domain"
+      echo
+      echo "All prerequisites are met. You can now access your application at:"
+      echo "   $CLOUDFRONT_URL"
+      echo
+      echo "You can now proceed to step-40-test.sh"
       return 0
     fi
   elif command -v nslookup &> /dev/null; then
     if nslookup "$domain" | grep -q "Address"; then
       echo "✅ DNS resolution successful for $domain"
+      echo
+      echo "All prerequisites are met. You can now access your application at:"
+      echo "   $CLOUDFRONT_URL"
+      echo
+      echo "You can now proceed to step-40-test.sh"
       return 0
     fi
   else
     # Fallback to curl
-    if curl -s -o /dev/null -w "%{http_code}" "https://$domain" | grep -q -v "000"; then
+    local status_code
+    status_code=$(curl -s -o /dev/null -w "%{http_code}" "https://$domain" || echo "000")
+    if [ "$status_code" != "000" ]; then
       echo "✅ DNS resolution appears to be working for $domain"
+      echo
+      echo "All prerequisites are met. You can now access your application at:"
+      echo "   $CLOUDFRONT_URL"
+      echo
+      echo "You can now proceed to step-40-test.sh"
       return 0
     fi
   fi
   
   echo "⚠️ DNS for Cognito domain ($domain) has not fully propagated yet."
   echo "This can take 15-30 minutes. Please wait and try again."
+  echo
+  echo "You can still proceed to step-40-test.sh, but authentication may not work until DNS propagates."
   return 1
 }
 
-print_next_steps() {
+# Run all checks in sequence
+run_all_checks() {
+  local all_passed=true
+  
+  echo "🔍 Running all validation checks in sequence..."
   echo
-  echo "Next steps:"
   
-  if ! check_deployment_status &>/dev/null; then
-    echo "1. Run './step-20-deploy.sh' to deploy your application"
-    exit 0
+  echo "Step 1: Validating setup (step-10-setup.sh)"
+  echo "-------------------------------------------"
+  if ! validate_step_10; then
+    all_passed=false
+    echo "❌ Setup validation failed. Please fix the issues before proceeding."
+    return 1
   fi
-  
-  if ! check_cognito_domain &>/dev/null; then
-    echo "1. Wait for the Cognito domain to become active or fix domain configuration issues"
-    echo "2. Run this validation script again to verify"
-    exit 0
-  fi
-  
-  if ! check_cognito_users &>/dev/null; then
-    echo "1. Run './step-30-create-user.sh' to create a test user"
-    exit 0
-  fi
-  
-  if ! check_dns_propagation &>/dev/null; then
-    echo "1. Wait for DNS propagation (15-30 minutes)"
-    echo "2. Run this validation script again to verify"
-    exit 0
-  fi
-  
-  echo "✅ All checks passed! You can now test your application at:"
-  echo "   $CLOUDFRONT_URL"
   echo
-  echo "Run './step-40-test.sh' to perform comprehensive testing of all components."
+  
+  echo "Step 2: Validating deployment (step-20-deploy.sh)"
+  echo "------------------------------------------------"
+  if ! validate_step_20; then
+    all_passed=false
+    echo "❌ Deployment validation failed. Please fix the issues before proceeding."
+    return 1
+  fi
+  echo
+  
+  echo "Step 3: Validating user creation (step-30-create-user.sh)"
+  echo "--------------------------------------------------------"
+  if ! validate_step_30; then
+    all_passed=false
+    echo "❌ User creation validation failed. Please fix the issues before proceeding."
+    return 1
+  fi
+  echo
+  
+  echo "Step 4: Checking DNS propagation"
+  echo "-------------------------------"
+  if ! check_dns_propagation; then
+    all_passed=false
+    echo "⚠️ DNS propagation check failed, but this might just need more time."
+  fi
+  echo
+  
+  if [ "$all_passed" = true ]; then
+    echo "✅ All validation checks passed successfully!"
+    echo "You can now access your application at:"
+    echo "   $CLOUDFRONT_URL"
+    echo
+    echo "Proceed to step-40-test.sh for final testing."
+  else
+    echo "⚠️ Some validation checks failed. Please address the issues before proceeding."
+  fi
 }
 
 # Main execution
 print_header
-check_env_file
-
+echo "This tool validates that each step in the deployment workflow completed successfully."
+echo "Run it after each step to make sure you're ready to proceed to the next step."
 echo
-echo "Choose what to check:"
-echo "1. Check deployment status (pre-step-20)"
-echo "2. Check Cognito domain (pre-step-30)"
-echo "3. Check Cognito users (pre-step-40)"
-echo "4. Check DNS propagation (post-step-30)"
-echo "5. Run all checks (comprehensive validation)"
+
+echo "Choose what to validate:"
+echo "1. Validate step-10-setup.sh (Initial Setup)"
+echo "2. Validate step-20-deploy.sh (Deployment)"
+echo "3. Validate step-30-create-user.sh (User Creation)"
+echo "4. Check DNS propagation (required for authentication)"
+echo "5. Run all validation checks"
 echo
 read -p "Enter your choice (1-5): " choice
 
 case $choice in
-  1) check_deployment_status ;;
-  2) check_cognito_domain ;;
-  3) check_cognito_users ;;
+  1) validate_step_10 ;;
+  2) validate_step_20 ;;
+  3) validate_step_30 ;;
   4) check_dns_propagation ;;
-  5) 
-    check_deployment_status
-    check_cognito_domain
-    check_cognito_users
-    check_dns_propagation
-    ;;
+  5) run_all_checks ;;
   *) 
     echo "Invalid choice. Please enter a number between 1 and 5."
     exit 1
     ;;
 esac
-
-print_next_steps
 
 echo "=================================================="
