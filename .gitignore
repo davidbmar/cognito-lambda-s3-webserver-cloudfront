@@ -1,3 +1,7 @@
+# Generated files
+web/app.js
+*.bak
+
 # Node.js dependencies
 node_modules/
 .serverless/

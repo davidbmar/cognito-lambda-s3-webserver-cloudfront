@@ -1,11 +1,15 @@
-// Configuration - to be updated after deployment do not edit.
+// WARNING: This is a template file that gets modified during deployment
+// DO NOT EDIT app.js directly as changes will be overwritten during deployment
+// Make changes to app.js.template instead
+
+// Configuration - to be updated after deployment
 const config = {
-    userPoolId: 'us-east-2_xGof4XEwA',
-    userPoolClientId: '5klu3u1d9em86f62hhj2r0nvg7',
-    identityPoolId: 'us-east-2:5a42d5a1-2101-4197-973d-f6c86254bba2',
+    userPoolId: 'YOUR_USER_POOL_ID',
+    userPoolClientId: 'YOUR_USER_POOL_CLIENT_ID',
+    identityPoolId: 'YOUR_IDENTITY_POOL_ID',
     region: 'us-east-2', // Your AWS region
-    apiUrl: 'https://7qgztkr7xe.execute-api.us-east-2.amazonaws.com/dev/data',
-    appUrl: 'https://d3ny5918zjcru8.cloudfront.net'
+    apiUrl: 'YOUR_API_ENDPOINT',
+    appUrl: 'YOUR_APP_URL'
 };
 
 // DOM elements
@@ -46,9 +50,10 @@ document.addEventListener('DOMContentLoaded', function() {
     getDataButton.addEventListener('click', getData);
 });
 
+// Login function - this will be replaced during deployment with the correct domain
 function login() {
-    // Use the specific domain rather than trying to construct it from the user pool ID
-    const authUrl = 'https://dmar-serverless-app-dev.auth.us-east-2.amazoncognito.com/login';
+    // The domain prefix will be replaced during deployment
+    const authUrl = 'https://YOUR_COGNITO_DOMAIN_PREFIX.auth.us-east-2.amazoncognito.com/login';
     const redirectUri = `${config.appUrl}/callback.html`;
     
     const queryParams = new URLSearchParams({
