@@ -1,5 +1,5 @@
 #!/bin/bash
-# deploy.sh - Deploys the CloudFront Cognito Serverless Application
+# step2-deploy.sh - Deploys the CloudFront Cognito Serverless Application
 # Run this script after setup.sh
 
 set -e # Exit on any error
@@ -35,12 +35,50 @@ fi
 # Check if we need to install dependencies
 if [ ! -d "node_modules" ]; then
     echo "📦 Installing dependencies..."
-    npm install
+    
+    # Create or update package.json if it doesn't exist or lacks required dependencies
+    if [ ! -f "package.json" ]; then
+        echo "Creating package.json..."
+        cat > package.json << EOL
+{
+  "name": "${APP_NAME}",
+  "version": "1.0.0",
+  "description": "CloudFront Cognito Serverless Application",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "serverless deploy",
+    "remove": "serverless remove"
+  },
+  "devDependencies": {
+    "serverless": "^3.30.1"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1423.0"
+  }
+}
+EOL
+    else
+        # Update package.json to fix dependency issues
+        echo "Updating package.json to fix dependency conflicts..."
+        # This ensures serverless-offline is compatible with serverless
+        if grep -q "serverless-offline" package.json; then
+            if grep -q "serverless.*4" package.json; then
+                # If serverless v4, ensure offline is compatible
+                sed -i.bak 's/"serverless-offline": "[^"]*"/"serverless-offline": "^14.0.0"/g' package.json
+            else
+                # If serverless v3, ensure offline is compatible
+                sed -i.bak 's/"serverless-offline": "[^"]*"/"serverless-offline": "^12.0.4"/g' package.json
+            fi
+        fi
+    fi
+    
+    # Install dependencies with legacy peer deps to avoid conflicts
+    npm install --legacy-peer-deps
 fi
 
 # Deploy the serverless application
 echo "🚀 Deploying serverless application..."
-serverless deploy --stage $STAGE
+npx serverless deploy --stage $STAGE
 
 # Get the outputs from the deployment
 echo "📊 Retrieving deployment outputs..."
@@ -128,16 +166,17 @@ if [ -n "$DISTRIBUTION_ID" ]; then
     aws cloudfront get-distribution-config --id $DISTRIBUTION_ID > $CONFIG_FILE
     
     # Check if custom error responses already exist
-    ERROR_RESPONSES_COUNT=$(jq -r '.DistributionConfig.CustomErrorResponses.Quantity' $CONFIG_FILE)
+    ERROR_RESPONSES_COUNT=$(grep -c "ErrorCode" $CONFIG_FILE || echo "0")
     
     if [ "$ERROR_RESPONSES_COUNT" == "0" ]; then
-        # Add custom error responses for SPA routing
-        jq '.DistributionConfig.CustomErrorResponses = {"Quantity": 2, "Items": [{"ErrorCode": 403, "ResponsePagePath": "/index.html", "ResponseCode": "200", "ErrorCachingMinTTL": 10}, {"ErrorCode": 404, "ResponsePagePath": "/index.html", "ResponseCode": "200", "ErrorCachingMinTTL": 10}]}' $CONFIG_FILE > ${CONFIG_FILE}.tmp
-        mv ${CONFIG_FILE}.tmp $CONFIG_FILE
+        # Add custom error responses manually since jq may not be available
+        TMP_FILE=$(mktemp)
+        sed 's/"CustomErrorResponses": {[^}]*}/&, "Quantity": 2, "Items": [{"ErrorCode": 403, "ResponsePagePath": "\/index.html", "ResponseCode": "200", "ErrorCachingMinTTL": 10}, {"ErrorCode": 404, "ResponsePagePath": "\/index.html", "ResponseCode": "200", "ErrorCachingMinTTL": 10}]/' $CONFIG_FILE > $TMP_FILE
+        mv $TMP_FILE $CONFIG_FILE
         
         # Remove ETag from the config
-        jq 'del(.ETag)' $CONFIG_FILE > ${CONFIG_FILE}.tmp
-        mv ${CONFIG_FILE}.tmp $CONFIG_FILE
+        grep -v "ETag" $CONFIG_FILE > $TMP_FILE
+        mv $TMP_FILE $CONFIG_FILE
         
         # Update the distribution
         aws cloudfront update-distribution --id $DISTRIBUTION_ID --if-match $ETAG --distribution-config file://$CONFIG_FILE
@@ -182,7 +221,7 @@ echo "   Cognito Domain: ${COGNITO_DOMAIN}.auth.${AWS_REGION}.amazoncognito.com"
 echo
 echo "⚠️ Note: It may take a few minutes for the CloudFront distribution to fully deploy."
 echo "⚠️ You need to create a user in the Cognito User Pool to test the authentication."
-echo "   Run './create-user.sh' to create a test user."
+echo "   Run './step3-create-user.sh' to create a test user."
 echo
 echo "⚠️ IMPORTANT: Do not commit web/app.js to version control as it contains environment-specific values."
 echo "   Only commit web/app.js.template and let the deployment script generate app.js during deployment."

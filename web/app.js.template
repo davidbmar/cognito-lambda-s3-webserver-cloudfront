@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Login function - this will be replaced during deployment with the correct domain
 function login() {
     // The domain prefix will be replaced during deployment
-    const authUrl = 'https://YOUR_COGNITO_DOMAIN_PREFIX.auth.us-east-2.amazoncognito.com/login';
+    const authUrl = 'https://david-clouudfront-cognito-app.auth.us-east-2.amazoncognito.com/login';
     const redirectUri = `${config.appUrl}/callback.html`;
     
     const queryParams = new URLSearchParams({
