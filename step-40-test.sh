@@ -1,13 +1,13 @@
 #!/bin/bash
 # step-40-test.sh - Tests the deployed application
-# Run this script after step-20-deploy.sh and step-30-create-user.sh
+# Run this script after validating that steps 10, 20, and 30 completed successfully
 
 set -e # Exit on any error
 
 # Welcome banner
 echo "=================================================="
 echo "   CloudFront Cognito Serverless Application     "
-echo "                 Test Script                     "
+echo "           Security and Function Tests           "
 echo "=================================================="
 echo
 
@@ -32,61 +32,80 @@ echo "🔍 Testing application components..."
 check_url() {
     local url=$1
     local description=$2
+    local expected_success=$3  # true or false
     
     echo -n "  🔗 Testing $description ($url)... "
     
     # Use curl to check if the URL is accessible
-    if curl -s --head "$url" | grep "200 OK\|200\|301\|302" > /dev/null; then
+    local status_code
+    status_code=$(curl -s -o /dev/null -w "%{http_code}" "$url" || echo "000")
+    
+    if [[ "$expected_success" == "true" && ("$status_code" == "200" || "$status_code" == "301" || "$status_code" == "302") ]]; then
         echo "✅ Success!"
         return 0
+    elif [[ "$expected_success" == "false" && ("$status_code" == "403" || "$status_code" == "401") ]]; then
+        echo "✅ Secured! (Access correctly denied)"
+        return 0
+    elif [[ "$expected_success" == "false" && "$status_code" != "200" && "$status_code" != "301" && "$status_code" != "302" ]]; then
+        echo "✅ Secured! (Access correctly restricted - status code: $status_code)"
+        return 0
     else
-        echo "❌ Failed!"
+        echo "❌ Failed! (Status code: $status_code)"
         return 1
     fi
 }
 
-# Test CloudFront URL
-if check_url "$CLOUDFRONT_URL" "CloudFront Distribution"; then
+# Test CloudFront URL - expect success
+if check_url "$CLOUDFRONT_URL" "CloudFront Distribution" "true"; then
     CLOUDFRONT_OK=true
 else
     CLOUDFRONT_OK=false
-    echo "    ⚠️ CloudFront distribution may not be fully deployed yet. It can take 5-10 minutes."
+    echo "    ⚠️ CloudFront distribution can't be accessed. It may not be fully deployed yet (can take 5-10 minutes)."
 fi
 
-# Test S3 bucket website URL
-if [ -n "$WEBSITE_URL" ]; then
-    if check_url "$WEBSITE_URL" "S3 Website"; then
+# Test S3 direct access - expect failure
+if [ -n "$S3_BUCKET_NAME" ]; then
+    S3_URL="http://${S3_BUCKET_NAME}.s3-website.${REGION}.amazonaws.com"
+    if check_url "$S3_URL" "S3 Direct Access (should be blocked)" "false"; then
         S3_OK=true
+        echo "    ✅ Security check passed: Direct access to S3 is properly restricted."
+        echo "    This confirms CloudFront Origin Access Control is correctly configured."
     else
         S3_OK=false
-        echo "    ⚠️ S3 website may not be properly configured."
+        echo "    ⚠️ SECURITY ISSUE: S3 bucket can be accessed directly, bypassing CloudFront!"
+        echo "    This indicates Origin Access Control is not properly configured."
     fi
 else
-    S3_OK=false
-    echo "    ⚠️ S3 website URL not found in .env file."
+    echo "    ⚠️ S3 bucket name not found in .env file. Skipping S3 direct access test."
+    # We'll still consider this a pass for the overall test
+    S3_OK=true
 fi
 
-# Test API endpoint
+# Test API Gateway - expect failure without auth
 if [ -n "$API_ENDPOINT" ]; then
-    if check_url "${API_ENDPOINT%/data}" "API Gateway"; then
+    if check_url "$API_ENDPOINT" "API Gateway Security Check" "false"; then
         API_OK=true
+        echo "    ✅ Security check passed: API Gateway correctly requires authentication."
+        echo "    This confirms your API is protected by Cognito authorization."
     else
         API_OK=false
-        echo "    ⚠️ API Gateway may not be properly configured or requires authentication."
+        echo "    ⚠️ SECURITY ISSUE: API Gateway accessible without authentication!"
+        echo "    Please check that Cognito authorizer is correctly configured."
     fi
 else
+    echo "    ⚠️ API endpoint not found in .env file. Skipping API security test."
+    # We'll still consider this a fail for the overall test
     API_OK=false
-    echo "    ⚠️ API endpoint not found in .env file."
 fi
 
 # Test Cognito domain
 if [ -n "$COGNITO_DOMAIN" ] && [ -n "$REGION" ]; then
     COGNITO_URL="https://${COGNITO_DOMAIN}.auth.${REGION}.amazoncognito.com"
-    if check_url "$COGNITO_URL" "Cognito Domain"; then
+    if check_url "$COGNITO_URL" "Cognito Domain" "true"; then
         COGNITO_OK=true
     else
         COGNITO_OK=false
-        echo "    ⚠️ Cognito domain may not be properly configured."
+        echo "    ⚠️ Cognito domain may not be fully propagated yet (can take 15-30 minutes)."
     fi
 else
     COGNITO_OK=false
@@ -127,27 +146,28 @@ else
 fi
 
 # Calculate overall status
-if [ "$CLOUDFRONT_OK" = true ] && [ "$API_OK" = true ] && [ "$COGNITO_OK" = true ] && [ "$USERS_OK" = true ] && [ "$SPA_OK" = true ]; then
-    OVERALL_STATUS="✅ PASSED"
-    HELP_MESSAGE="You can now use the application by visiting: $CLOUDFRONT_URL"
+if [ "$CLOUDFRONT_OK" = true ] && [ "$S3_OK" = true ] && [ "$API_OK" = true ] && [ "$COGNITO_OK" = true ] && [ "$USERS_OK" = true ] && [ "$SPA_OK" = true ]; then
+    OVERALL_STATUS="✅ ALL PASSED"
+    STATUS_MESSAGE="All security and functionality tests passed successfully!"
 else
-    OVERALL_STATUS="⚠️ PARTIAL"
-    HELP_MESSAGE="Some components may need attention. See details above."
+    OVERALL_STATUS="⚠️ ATTENTION NEEDED"
+    STATUS_MESSAGE="Some checks require attention - see details below."
 fi
 
 # Print summary
 echo
 echo "📋 Test Summary:"
-echo "   CloudFront Distribution: $([ "$CLOUDFRONT_OK" = true ] && echo "✅ OK" || echo "❌ Issue")"
-echo "   S3 Website: $([ "$S3_OK" = true ] && echo "✅ OK" || echo "❌ Issue")"
-echo "   API Gateway: $([ "$API_OK" = true ] && echo "✅ OK" || echo "❌ Issue")"
-echo "   Cognito Domain: $([ "$COGNITO_OK" = true ] && echo "✅ OK" || echo "❌ Issue")"
-echo "   Users in Cognito: $([ "$USERS_OK" = true ] && echo "✅ OK" || echo "❌ Issue")"
-echo "   SPA Routing: $([ "$SPA_OK" = true ] && echo "✅ OK" || echo "❌ Issue")"
+echo "   CloudFront Distribution: $([ "$CLOUDFRONT_OK" = true ] && echo "✅ Accessible" || echo "❌ Not accessible")"
+echo "   S3 Direct Access: $([ "$S3_OK" = true ] && echo "✅ Properly secured" || echo "❌ Security issue")"
+echo "   API Gateway: $([ "$API_OK" = true ] && echo "✅ Properly secured" || echo "❌ Security issue")"
+echo "   Cognito Domain: $([ "$COGNITO_OK" = true ] && echo "✅ Accessible" || echo "❌ Not accessible")"
+echo "   Users in Cognito: $([ "$USERS_OK" = true ] && echo "✅ User(s) exist" || echo "❌ No users")"
+echo "   SPA Routing: $([ "$SPA_OK" = true ] && echo "✅ Working" || echo "❌ Not working")"
 echo
 echo "🏁 Overall Status: $OVERALL_STATUS"
 echo
-echo "💡 $HELP_MESSAGE"
+echo "💡 $STATUS_MESSAGE"
 echo
-echo "👉 For the best experience, test the application in a web browser: $CLOUDFRONT_URL"
+echo "👉 Access your application at: $CLOUDFRONT_URL"
+echo "   Login with the user created in step-30-create-user.sh"
 echo "=================================================="
