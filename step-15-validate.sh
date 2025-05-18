@@ -54,6 +54,13 @@ validate_step_10() {
       return 1
     fi
   done
+
+  echo "🔍 Checking if app.js.template is using proper placeholders..."
+  if grep -q "https://[^\.]*\.auth" web/app.js.template | grep -v "YOUR_COGNITO_DOMAIN_PREFIX"; then
+      echo "⚠️ Warning: app.js.template contains hardcoded URLs that should be placeholders."
+      echo "    Consider updating web/app.js.template to use placeholders like YOUR_COGNITO_DOMAIN_PREFIX."
+      return 1
+  fi
   
   echo "✅ step-10-setup.sh completed successfully!"
   echo "   - .env file created with all required variables"
