@@ -21,6 +21,7 @@ const dataOutput = document.getElementById('data-output');
 const loginSection = document.getElementById('login-section');
 const authenticatedSection = document.getElementById('authenticated-section');
 
+
 // Check if user is authenticated
 function checkAuthentication() {
     const idToken = localStorage.getItem('id_token');
@@ -30,9 +31,14 @@ function checkAuthentication() {
         loginSection.style.display = 'none';
         authenticatedSection.style.display = 'block';
         
-        // Parse the JWT token to get the email
-        const payload = JSON.parse(atob(idToken.split('.')[1]));
-        userEmailSpan.textContent = payload.email;
+        try {
+            // Parse the JWT token to get the email
+            const payload = JSON.parse(atob(idToken.split('.')[1]));
+            userEmailSpan.textContent = payload.email || 'User';
+        } catch (error) {
+            console.error('Error parsing token:', error);
+            userEmailSpan.textContent = 'Authenticated User';
+        }
     } else {
         // User is not authenticated
         loginSection.style.display = 'block';

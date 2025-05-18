@@ -11,19 +11,48 @@
         <h1>Processing Authentication...</h1>
         <p>Please wait while we process your sign-in.</p>
     </div>
+    
+    <!-- Any CDN scripts should go here -->
     <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js/dist/amazon-cognito-identity.min.js"></script>
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1000.0.min.js"></script>
+    
+    <!-- Our authentication handling script -->
     <script>
-        // Parse the URL fragment
+        // Parse the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
         const fragment = window.location.hash.substring(1);
-        const params = new URLSearchParams(fragment);
+        const fragmentParams = new URLSearchParams(fragment);
         
-        // Store the tokens in localStorage
-        localStorage.setItem('id_token', params.get('id_token'));
-        localStorage.setItem('access_token', params.get('access_token'));
-        
-        // Redirect back to the main page
-        window.location.href = 'index.html';
+        // Check for authorization code flow
+        if (code) {
+            console.log("Received authorization code:", code);
+            // In a real implementation, you would exchange this for tokens
+            // For now, just redirect back to the main page
+            localStorage.setItem('auth_code', code);
+            window.location.href = 'index.html';
+        } 
+        // Check for implicit flow
+        else if (fragment) {
+            const idToken = fragmentParams.get('id_token');
+            const accessToken = fragmentParams.get('access_token');
+            
+            if (idToken) {
+                localStorage.setItem('id_token', idToken);
+            }
+            
+            if (accessToken) {
+                localStorage.setItem('access_token', accessToken);
+            }
+            
+            // Redirect back to the main page
+            window.location.href = 'index.html';
+        } 
+        // No authentication information found
+        else {
+            console.error("No authentication information found in URL");
+            window.location.href = 'index.html';
+        }
     </script>
 </body>
 </html>
