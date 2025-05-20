@@ -5,91 +5,117 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cognito Serverless App</title>
     <link rel="stylesheet" href="styles.css">
-    <style>
-        .debug-section {
-            background-color: #f0f0f0;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 5px;
-            display: none;
-        }
-        pre {
-            white-space: pre-wrap;
-            background-color: #e0e0e0;
-            padding: 10px;
-            border-radius: 5px;
-        }
-    </style>
 </head>
 <body>
     <div class="container">
         <h1>Cognito Serverless Demo</h1>
-        
+        <div id="debug" style="background-color: #f0f0f0; padding: 10px; margin-bottom: 20px; display: none;">
+            <h3>Debug Info:</h3>
+            <pre id="debug-info"></pre>
+            <button id="toggle-debug">Hide Debug Info</button>
+        </div>
         <div id="login-section">
             <button id="login-button">Sign In</button>
-            <button id="debug-toggle" onclick="toggleDebug()" style="background-color: #888;">Show Debug Info</button>
+            <button id="show-debug" style="background-color: #888;">Show Debug Info</button>
         </div>
-        
         <div id="authenticated-section" style="display: none;">
             <h2>Welcome, <span id="user-email"></span>!</h2>
             <button id="get-data-button">Get Data from Lambda</button>
             <div id="data-output"></div>
             <button id="logout-button">Sign Out</button>
         </div>
-        
-        <div id="debug-section" class="debug-section">
-            <h3>Debug Information</h3>
-            <pre id="debug-content"></pre>
-        </div>
     </div>
-    
-    <script>
-        function toggleDebug() {
-            const debugSection = document.getElementById('debug-section');
-            const debugContent = document.getElementById('debug-content');
-            const debugToggle = document.getElementById('debug-toggle');
-            
-            if (debugSection.style.display === 'none' || !debugSection.style.display) {
-                debugSection.style.display = 'block';
-                debugToggle.textContent = 'Hide Debug Info';
-                
-                // Gather debug info
-                const idToken = localStorage.getItem('id_token');
-                const accessToken = localStorage.getItem('access_token');
-                const authCode = localStorage.getItem('auth_code');
-                
-                let debugInfo = 'LOCAL STORAGE:\n';
-                debugInfo += `- ID Token: ${idToken ? 'Present' : 'Not found'}\n`;
-                debugInfo += `- Access Token: ${accessToken ? 'Present' : 'Not found'}\n`;
-                debugInfo += `- Auth Code: ${authCode ? 'Present' : 'Not found'}\n\n`;
-                
-                debugInfo += 'APP CONFIG:\n';
-                try {
-                    debugInfo += JSON.stringify(config, null, 2) + '\n\n';
-                } catch (e) {
-                    debugInfo += `Error getting config: ${e.message}\n\n`;
-                }
-                
-                if (idToken) {
-                    debugInfo += 'TOKEN PAYLOAD:\n';
-                    try {
-                        const payload = JSON.parse(atob(idToken.split('.')[1]));
-                        debugInfo += JSON.stringify(payload, null, 2);
-                    } catch (e) {
-                        debugInfo += `Error parsing token: ${e.message}`;
-                    }
-                }
-                
-                debugContent.textContent = debugInfo;
-            } else {
-                debugSection.style.display = 'none';
-                debugToggle.textContent = 'Show Debug Info';
-            }
-        }
-    </script>
-    
     <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js/dist/amazon-cognito-identity.min.js"></script>
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1000.0.min.js"></script>
     <script src="app.js"></script>
+    <script>
+        // Add debug functionality
+        const debugSection = document.getElementById('debug');
+        const debugInfo = document.getElementById('debug-info');
+        const showDebugBtn = document.getElementById('show-debug');
+        const toggleDebugBtn = document.getElementById('toggle-debug');
+        
+        function updateDebugInfo() {
+            const idToken = localStorage.getItem('id_token');
+            const accessToken = localStorage.getItem('access_token');
+            const authCode = localStorage.getItem('auth_code');
+            
+            let debugText = 'LOCAL STORAGE:\n';
+            debugText += `- ID Token: ${idToken ? 'Present' : 'Not found'}\n`;
+            debugText += `- Access Token: ${accessToken ? 'Present' : 'Not found'}\n`;
+            debugText += `- Auth Code: ${authCode ? 'Present' : 'Not found'}\n\n`;
+            
+            debugText += 'APP CONFIG:\n';
+            try {
+                if (typeof config !== 'undefined') {
+                    debugText += JSON.stringify(config, null, 2) + '\n\n';
+                } else {
+                    debugText += 'Error getting config: config is not defined\n\n';
+                }
+            } catch (e) {
+                debugText += `Error getting config: ${e.message}\n\n`;
+            }
+            
+            if (idToken) {
+                debugText += 'TOKEN PAYLOAD:\n';
+                try {
+                    const payload = JSON.parse(atob(idToken.split('.')[1]));
+                    debugText += JSON.stringify(payload, null, 2);
+                } catch (e) {
+                    debugText += `Error parsing token: ${e.message}`;
+                }
+            }
+            
+            debugInfo.textContent = debugText;
+        }
+        
+        showDebugBtn.addEventListener('click', function() {
+            debugSection.style.display = 'block';
+            showDebugBtn.style.display = 'none';
+            updateDebugInfo();
+        });
+        
+        toggleDebugBtn.addEventListener('click', function() {
+            if (debugSection.style.display === 'none') {
+                debugSection.style.display = 'block';
+                toggleDebugBtn.textContent = 'Hide Debug Info';
+                updateDebugInfo();
+            } else {
+                debugSection.style.display = 'none';
+                toggleDebugBtn.textContent = 'Show Debug Info';
+            }
+        });
+
+        // Fix for login button if it's not working
+        document.getElementById('login-button').onclick = function() {
+            console.log("Login button clicked");
+            if (typeof login === 'function') {
+                login();
+            } else {
+                console.error("Login function not defined!");
+                alert("Login function not available. Please check the console for more information.");
+                
+                // Display a direct login URL as fallback
+                try {
+                    if (typeof config !== 'undefined' && config.userPoolClientId) {
+                        const cognito_domain = window.location.hostname.split('.')[0].replace('d2d046gfjrrwhb', 'dmar-cloudfront-app-1747716583');
+                        const authUrl = `https://${cognito_domain}.auth.us-east-2.amazoncognito.com/login`;
+                        const redirectUri = `${window.location.origin}/callback.html`;
+                        
+                        const queryParams = new URLSearchParams({
+                            client_id: config.userPoolClientId,
+                            response_type: 'token',
+                            scope: 'email openid profile',
+                            redirect_uri: redirectUri,
+                        });
+                        
+                        window.location.href = `${authUrl}?${queryParams.toString()}`;
+                    }
+                } catch (e) {
+                    console.error("Error creating fallback login URL:", e);
+                }
+            }
+        };
+    </script>
 </body>
 </html>

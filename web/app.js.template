@@ -65,28 +65,32 @@ function checkAuthentication() {
 
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM loaded, checking authentication");
     checkAuthentication();
     
     // Set up event listeners
-    loginButton.addEventListener('click', login);
-    logoutButton.addEventListener('click', logout);
-    getDataButton.addEventListener('click', getData);
+    if (loginButton) loginButton.addEventListener('click', login);
+    if (logoutButton) logoutButton.addEventListener('click', logout);
+    if (getDataButton) getDataButton.addEventListener('click', getData);
 });
 
 // Login function - this will be replaced during deployment with the correct domain
 function login() {
+    console.log("Login function called");
     // The domain prefix will be replaced during deployment
     const authUrl = 'https://YOUR_COGNITO_DOMAIN_PREFIX.auth.us-east-2.amazoncognito.com/login';
     const redirectUri = `${config.appUrl}/callback.html`;
     
     const queryParams = new URLSearchParams({
         client_id: config.userPoolClientId,
-        response_type: 'token', // Changed from 'code' to 'token' for implicit flow
+        response_type: 'token', // Use token for implicit flow
         scope: 'email openid profile',
         redirect_uri: redirectUri,
     });
     
-    window.location.href = `${authUrl}?${queryParams.toString()}`;
+    const loginUrl = `${authUrl}?${queryParams.toString()}`;
+    console.log("Redirecting to:", loginUrl);
+    window.location.href = loginUrl;
 }
 
 // Logout function
