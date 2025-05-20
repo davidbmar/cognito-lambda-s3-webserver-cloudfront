@@ -5,20 +5,89 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cognito Serverless App</title>
     <link rel="stylesheet" href="styles.css">
+    <style>
+        .debug-section {
+            background-color: #f0f0f0;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            display: none;
+        }
+        pre {
+            white-space: pre-wrap;
+            background-color: #e0e0e0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <h1>Cognito Serverless Demo</h1>
+        
         <div id="login-section">
             <button id="login-button">Sign In</button>
+            <button id="debug-toggle" onclick="toggleDebug()" style="background-color: #888;">Show Debug Info</button>
         </div>
+        
         <div id="authenticated-section" style="display: none;">
             <h2>Welcome, <span id="user-email"></span>!</h2>
             <button id="get-data-button">Get Data from Lambda</button>
             <div id="data-output"></div>
             <button id="logout-button">Sign Out</button>
         </div>
+        
+        <div id="debug-section" class="debug-section">
+            <h3>Debug Information</h3>
+            <pre id="debug-content"></pre>
+        </div>
     </div>
+    
+    <script>
+        function toggleDebug() {
+            const debugSection = document.getElementById('debug-section');
+            const debugContent = document.getElementById('debug-content');
+            const debugToggle = document.getElementById('debug-toggle');
+            
+            if (debugSection.style.display === 'none' || !debugSection.style.display) {
+                debugSection.style.display = 'block';
+                debugToggle.textContent = 'Hide Debug Info';
+                
+                // Gather debug info
+                const idToken = localStorage.getItem('id_token');
+                const accessToken = localStorage.getItem('access_token');
+                const authCode = localStorage.getItem('auth_code');
+                
+                let debugInfo = 'LOCAL STORAGE:\n';
+                debugInfo += `- ID Token: ${idToken ? 'Present' : 'Not found'}\n`;
+                debugInfo += `- Access Token: ${accessToken ? 'Present' : 'Not found'}\n`;
+                debugInfo += `- Auth Code: ${authCode ? 'Present' : 'Not found'}\n\n`;
+                
+                debugInfo += 'APP CONFIG:\n';
+                try {
+                    debugInfo += JSON.stringify(config, null, 2) + '\n\n';
+                } catch (e) {
+                    debugInfo += `Error getting config: ${e.message}\n\n`;
+                }
+                
+                if (idToken) {
+                    debugInfo += 'TOKEN PAYLOAD:\n';
+                    try {
+                        const payload = JSON.parse(atob(idToken.split('.')[1]));
+                        debugInfo += JSON.stringify(payload, null, 2);
+                    } catch (e) {
+                        debugInfo += `Error parsing token: ${e.message}`;
+                    }
+                }
+                
+                debugContent.textContent = debugInfo;
+            } else {
+                debugSection.style.display = 'none';
+                debugToggle.textContent = 'Show Debug Info';
+            }
+        }
+    </script>
+    
     <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js/dist/amazon-cognito-identity.min.js"></script>
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1000.0.min.js"></script>
     <script src="app.js"></script>

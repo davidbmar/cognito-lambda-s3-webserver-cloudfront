@@ -21,25 +21,42 @@ const dataOutput = document.getElementById('data-output');
 const loginSection = document.getElementById('login-section');
 const authenticatedSection = document.getElementById('authenticated-section');
 
-
 // Check if user is authenticated
 function checkAuthentication() {
+    console.log("Checking authentication...");
     const idToken = localStorage.getItem('id_token');
     
     if (idToken) {
-        // User is authenticated
-        loginSection.style.display = 'none';
-        authenticatedSection.style.display = 'block';
-        
+        console.log("Found ID token, verifying...");
         try {
             // Parse the JWT token to get the email
             const payload = JSON.parse(atob(idToken.split('.')[1]));
+            
+            // Check if token is expired
+            const now = Math.floor(Date.now() / 1000);
+            if (payload.exp && payload.exp < now) {
+                console.log("Token expired, logging out");
+                localStorage.removeItem('id_token');
+                localStorage.removeItem('access_token');
+                loginSection.style.display = 'block';
+                authenticatedSection.style.display = 'none';
+                return;
+            }
+            
+            console.log("Token valid, displaying authenticated section");
+            // User is authenticated
+            loginSection.style.display = 'none';
+            authenticatedSection.style.display = 'block';
             userEmailSpan.textContent = payload.email || 'User';
         } catch (error) {
             console.error('Error parsing token:', error);
             userEmailSpan.textContent = 'Authenticated User';
+            // Still show authenticated section even if we can't parse the token
+            loginSection.style.display = 'none';
+            authenticatedSection.style.display = 'block';
         }
     } else {
+        console.log("No token found, displaying login section");
         // User is not authenticated
         loginSection.style.display = 'block';
         authenticatedSection.style.display = 'none';
@@ -64,7 +81,7 @@ function login() {
     
     const queryParams = new URLSearchParams({
         client_id: config.userPoolClientId,
-        response_type: 'code',
+        response_type: 'token', // Changed from 'code' to 'token' for implicit flow
         scope: 'email openid profile',
         redirect_uri: redirectUri,
     });
