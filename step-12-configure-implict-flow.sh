@@ -1,5 +1,5 @@
 #!/bin/bash
-# configure-implicit-flow.sh - Configures the application to use implicit flow for authentication
+# step-12-configure-implicit-flow.sh - Configures the application to use implicit flow for authentication
 # Run this script after step-10-setup.sh and before step-20-deploy.sh
 
 set -e # Exit on any error
@@ -152,11 +152,14 @@ CALLBACK_HTML
 
 echo "✅ Enhanced callback.html with better token handling"
 
-# 3. Update the checkAuthentication function in app.js.template for better token validation
-echo "📝 Enhancing checkAuthentication function..."
+# 3. Create the enhanced authentication function file
+echo "📝 Creating enhanced authentication function file..."
 
-# First create temp file with the new function
-cat > /tmp/check_auth_function.txt << 'EOF'
+cat > web/enhance-auth-function.js << 'EOF'
+// Enhanced checkAuthentication function for app.js.template
+// To use this, replace the checkAuthentication function in app.js.template
+// with this improved version that includes token expiration checking
+
 // Check if user is authenticated
 function checkAuthentication() {
     console.log("Checking authentication...");
@@ -200,65 +203,59 @@ function checkAuthentication() {
 }
 EOF
 
-# This is a complex operation that works differently based on OS, so we'll provide instructions
-echo "⚠️ Please manually update the checkAuthentication function in web/app.js.template"
-echo "   Replace the current function with the enhanced version in /tmp/check_auth_function.txt"
+# 4. Create a helper script to apply the enhanced authentication function
+echo "📝 Creating helper script to apply enhanced authentication function..."
 
-# 4. Create post-deployment script to update Cognito User Pool Client
-echo "📝 Creating post-deployment script..."
-
-cat > update-cognito-client.sh << 'POST_DEPLOY'
+cat > apply-enhanced-auth.sh << 'EOF'
 #!/bin/bash
-# update-cognito-client.sh - Updates the Cognito User Pool Client to support implicit flow
-# Run this script after step-20-deploy.sh
+# Helper script to apply the enhanced authentication function
+# This uses pattern matching to replace the checkAuthentication function
 
-set -e # Exit on any error
-
-# Check if .env exists
-if [ ! -f .env ]; then
-    echo "❌ .env file not found. Please run step-20-deploy.sh first."
+# Find the start and end of the current checkAuthentication function
+START_LINE=$(grep -n "function checkAuthentication" web/app.js.template | cut -d: -f1)
+if [ -z "$START_LINE" ]; then
+    echo "❌ Could not find checkAuthentication function in app.js.template"
     exit 1
 fi
 
-# Load environment variables
-source .env
+# Use the new function from the enhance-auth-function.js file
+NEW_FUNCTION=$(cat web/enhance-auth-function.js)
 
-# Validate required variables
-if [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ] || [ -z "$CLOUDFRONT_URL" ]; then
-    echo "❌ Missing required variables in .env file. Please run step-20-deploy.sh first."
-    exit 1
-fi
+# Make a backup
+cp web/app.js.template web/app.js.template.auth.bak
 
-echo "🔄 Updating Cognito User Pool Client to support implicit flow..."
+# Use awk to replace the function
+awk -v start="$START_LINE" -v new_func="$NEW_FUNCTION" '
+    NR == start {
+        print new_func
+        in_func = 1
+        next
+    }
+    in_func && /^}/ {
+        in_func = 0
+        next
+    }
+    !in_func {
+        print
+    }
+' web/app.js.template.auth.bak > web/app.js.template
 
-aws cognito-idp update-user-pool-client \
-  --user-pool-id "$USER_POOL_ID" \
-  --client-id "$USER_POOL_CLIENT_ID" \
-  --callback-urls "${CLOUDFRONT_URL}/callback.html" \
-  --logout-urls "${CLOUDFRONT_URL}/index.html" \
-  --allowed-o-auth-flows "implicit" "code" \
-  --allowed-o-auth-scopes "email" "openid" "profile" \
-  --allowed-o-auth-flows-user-pool-client \
-  --supported-identity-providers "COGNITO"
+echo "✅ Enhanced authentication function applied to app.js.template"
+EOF
 
-echo "✅ Cognito User Pool Client updated successfully!"
-echo
-echo "You can now test the authentication flow by visiting your CloudFront URL:"
-echo "$CLOUDFRONT_URL"
-POST_DEPLOY
+chmod +x apply-enhanced-auth.sh
 
-chmod +x update-cognito-client.sh
+echo "⚠️ To apply the enhanced authentication function, run: ./apply-enhanced-auth.sh"
+echo "   This script will replace the checkAuthentication function in app.js.template"
 
 echo
 echo "✅ Configuration completed successfully!"
 echo
 echo "Next steps:"
-echo "1. Manually verify the checkAuthentication function in web/app.js.template"
+echo "1. Run './apply-enhanced-auth.sh' to update the authentication function (optional but recommended)"
 echo "2. Run './step-20-deploy.sh' to deploy your application"
-echo "3. After deployment, run './update-cognito-client.sh' to configure Cognito for implicit flow"
-echo "4. Continue with step-30-create-user.sh to create a test user"
+echo "3. After deployment, run './step-22-update-cognito-client.sh' to configure Cognito for implicit flow"
 echo
-echo "Note: This configuration only needs to be done once. If you check out the repo again,"
-echo "just run this script before deployment to enable implicit flow."
+echo "Note: The step-22-update-cognito-client.sh script should be in your repository."
+echo "If it's not, you can create it using the provided template."
 echo "=================================================="
-
