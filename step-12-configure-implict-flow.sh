@@ -1,4 +1,3 @@
-cat > configure-implicit-flow.sh << 'EOL'
 #!/bin/bash
 # configure-implicit-flow.sh - Configures the application to use implicit flow for authentication
 # Run this script after step-10-setup.sh and before step-20-deploy.sh
@@ -262,7 +261,4 @@ echo
 echo "Note: This configuration only needs to be done once. If you check out the repo again,"
 echo "just run this script before deployment to enable implicit flow."
 echo "=================================================="
-EOL
 
-# Make the script executable
-chmod +x configure-implicit-flow.sh
