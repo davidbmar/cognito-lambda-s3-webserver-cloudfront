@@ -160,6 +160,17 @@ resources:
         Roles:
           authenticated: !GetAtt AuthenticatedRole.Arn
 
+    # Origin Access Control for CloudFront
+    CloudFrontOriginAccessControl:
+      Type: AWS::CloudFront::OriginAccessControl
+      Properties:
+        OriginAccessControlConfig:
+          Name: !Sub "${AWS::StackName}-OAC"
+          OriginAccessControlOriginType: s3
+          SigningBehavior: always
+          SigningProtocol: sigv4
+
+
     # CloudFront Distribution with BOTH S3 and API Gateway origins
     CloudFrontDistribution:
       Type: AWS::CloudFront::Distribution
