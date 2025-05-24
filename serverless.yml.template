@@ -254,8 +254,8 @@ resources:
       Properties:
         CloudFrontOriginAccessIdentityConfig:
           Comment: "Access identity for S3 bucket"
-    
-    # Update the bucket policy to grant CloudFront access
+
+    # Bucket policy for CloudFront OAC access
     WebsiteBucketPolicy:
       Type: AWS::S3::BucketPolicy
       Properties:
@@ -265,10 +265,13 @@ resources:
           Statement:
             - Effect: Allow
               Principal:
-                CanonicalUser: !GetAtt CloudFrontOriginAccessIdentity.S3CanonicalUserId
-              Action: 's3:GetObject'
-              Resource: !Join ['', ['arn:aws:s3:::', !Ref WebsiteBucket, '/*']]
-
+                Service: cloudfront.amazonaws.com
+              Action: s3:GetObject
+              Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/*"
+              Condition:
+                StringEquals:
+                  AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+    
   Outputs:
     WebsiteURL:
       Description: S3 Website URL
