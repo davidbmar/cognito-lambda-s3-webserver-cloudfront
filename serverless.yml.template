@@ -159,18 +159,32 @@ resources:
         IdentityPoolId: !Ref IdentityPool
         Roles:
           authenticated: !GetAtt AuthenticatedRole.Arn
-    
+
+    # CloudFront Distribution with BOTH S3 and API Gateway origins
     CloudFrontDistribution:
       Type: AWS::CloudFront::Distribution
       Properties:
         DistributionConfig:
           Origins:
-            - DomainName: !GetAtt WebsiteBucket.DomainName
+            # S3 Origin for static website content
+            - DomainName: !GetAtt WebsiteBucket.RegionalDomainName
               Id: S3Origin
+              OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
               S3OriginConfig:
-                OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginAccessIdentity}"
+                OriginAccessIdentity: ""
+            # API Gateway Origin for API calls
+            - DomainName: !Sub "${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com"
+              Id: ApiOrigin
+              OriginPath: /${sls:stage}
+              CustomOriginConfig:
+                HTTPPort: 443
+                HTTPSPort: 443
+                OriginProtocolPolicy: https-only
+                OriginSSLProtocols:
+                  - TLSv1.2
           Enabled: true
           DefaultRootObject: index.html
+          # Default behavior - serves static content from S3
           DefaultCacheBehavior:
             AllowedMethods:
               - GET
@@ -181,6 +195,37 @@ resources:
               Cookies:
                 Forward: none
             ViewerProtocolPolicy: redirect-to-https
+          # CRITICAL: Cache behavior for /api/* paths - routes to API Gateway
+          CacheBehaviors:
+            - PathPattern: "/api/*"
+              TargetOriginId: ApiOrigin
+              AllowedMethods:
+                - GET
+                - HEAD
+                - OPTIONS
+                - PUT
+                - POST
+                - PATCH
+                - DELETE
+              CachedMethods:
+                - GET
+                - HEAD
+                - OPTIONS
+              ForwardedValues:
+                QueryString: true
+                Headers:
+                  - Authorization
+                  - Content-Type
+                  - Origin
+                  - Referer
+                  - Accept
+                Cookies:
+                  Forward: none
+              ViewerProtocolPolicy: redirect-to-https
+              DefaultTTL: 0
+              MaxTTL: 0
+              MinTTL: 0
+              Compress: true
           CustomErrorResponses:
             - ErrorCode: 403
               ResponsePagePath: /index.html
@@ -192,7 +237,7 @@ resources:
               ErrorCachingMinTTL: 10
           ViewerCertificate:
             CloudFrontDefaultCertificate: true
-    
+
     CloudFrontOriginAccessIdentity:
       Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
       Properties:
@@ -235,3 +280,6 @@ resources:
     CloudFrontURL:
       Description: URL of the CloudFront distribution
       Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+    CloudFrontApiEndpoint:
+      Description: URL of the API via CloudFront
+      Value: !Sub "https://${CloudFrontDistribution.DomainName}/api/data"

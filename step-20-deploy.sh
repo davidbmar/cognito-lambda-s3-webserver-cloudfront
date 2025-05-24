@@ -339,7 +339,7 @@ sed -i.bak "s/STAGE_PLACEHOLDER/$STAGE/g" serverless.yml
 echo "🚀 Deploying serverless application..."
 npx serverless deploy --stage $STAGE
 
-# Get the outputs from the deployment
+# Get the outputs from the deployment (add this section around line 200)
 echo "📊 Retrieving deployment outputs..."
 export AWS_PAGER=""
 STACK_NAME="${APP_NAME}-${STAGE}"
@@ -348,6 +348,7 @@ USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --que
 USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text)
 IDENTITY_POOL_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='IdentityPoolId'].OutputValue" --output text)
 API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='ApiEndpoint'].OutputValue" --output text)
+CLOUDFRONT_API_ENDPOINT=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CloudFrontApiEndpoint'].OutputValue" --output text)
 WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='WebsiteURL'].OutputValue" --output text)
 CLOUDFRONT_URL=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CloudFrontURL'].OutputValue" --output text)
 
@@ -378,7 +379,8 @@ else
     COGNITO_DOMAIN=$EXISTING_DOMAIN
 fi
 
-# Update .env file with the deployment outputs
+
+# Update .env file with the deployment outputs (add CloudFront API endpoint)
 echo "📝 Updating .env file with deployment outputs..."
 sed -i.bak "s|API_ENDPOINT=.*$|API_ENDPOINT=$API_ENDPOINT|g" .env
 sed -i.bak "s|USER_POOL_ID=.*$|USER_POOL_ID=$USER_POOL_ID|g" .env
@@ -388,20 +390,20 @@ sed -i.bak "s|CLOUDFRONT_URL=.*$|CLOUDFRONT_URL=$CLOUDFRONT_URL|g" .env
 sed -i.bak "s|COGNITO_DOMAIN=.*$|COGNITO_DOMAIN=$COGNITO_DOMAIN|g" .env
 sed -i.bak "s|WEBSITE_URL=.*$|WEBSITE_URL=$WEBSITE_URL|g" .env
 
-# Update the app.js file with the correct values
-echo "📝 Updating app.js with deployment values..."
-if [ -f web/app.js.template ]; then
-    echo "Creating app.js from template..."
-    cp web/app.js.template web/app.js
+# Add CloudFront API endpoint to .env if it doesn't exist
+if ! grep -q "CLOUDFRONT_API_ENDPOINT" .env; then
+    echo "CLOUDFRONT_API_ENDPOINT=$CLOUDFRONT_API_ENDPOINT" >> .env
 else
-    echo "⚠️ WARNING: app.js.template not found. Using existing app.js file if available."
+    sed -i.bak "s|CLOUDFRONT_API_ENDPOINT=.*$|CLOUDFRONT_API_ENDPOINT=$CLOUDFRONT_API_ENDPOINT|g" .env
 fi
 
+# Update the app.js replacement section to use CloudFront API:
 if [ -f web/app.js ]; then
     sed -i.bak "s|YOUR_USER_POOL_ID|$USER_POOL_ID|g" web/app.js
     sed -i.bak "s|YOUR_USER_POOL_CLIENT_ID|$USER_POOL_CLIENT_ID|g" web/app.js
     sed -i.bak "s|YOUR_IDENTITY_POOL_ID|$IDENTITY_POOL_ID|g" web/app.js
-    sed -i.bak "s|YOUR_API_ENDPOINT|$API_ENDPOINT|g" web/app.js
+    # Use CloudFront API endpoint instead of direct API Gateway
+    sed -i.bak "s|YOUR_API_ENDPOINT|$CLOUDFRONT_API_ENDPOINT|g" web/app.js
     sed -i.bak "s|YOUR_APP_URL|$CLOUDFRONT_URL|g" web/app.js
     sed -i.bak "s|YOUR_COGNITO_DOMAIN_PREFIX|$COGNITO_DOMAIN|g" web/app.js
 

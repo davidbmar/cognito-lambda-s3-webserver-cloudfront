@@ -8,7 +8,7 @@ const config = {
     userPoolClientId: 'YOUR_USER_POOL_CLIENT_ID',
     identityPoolId: 'YOUR_IDENTITY_POOL_ID',
     region: 'us-east-2', // Your AWS region
-    apiUrl: 'YOUR_API_ENDPOINT',
+    apiUrl: 'YOUR_CLOUDFRONT_API_ENDPOINT', // Changed to use CloudFront API endpoint
     appUrl: 'YOUR_APP_URL'
 };
 
@@ -100,7 +100,7 @@ function logout() {
     checkAuthentication();
 }
 
-// Get data from Lambda function
+// Get data from Lambda function via CloudFront
 async function getData() {
     const idToken = localStorage.getItem('id_token');
     
@@ -110,19 +110,43 @@ async function getData() {
     }
     
     try {
+        console.log('Making API call to:', config.apiUrl);
+        dataOutput.textContent = 'Loading...';
+        
         const response = await fetch(config.apiUrl, {
+            method: 'GET',
             headers: {
-                'Authorization': `Bearer ${idToken}`
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             }
         });
         
+        console.log('API response status:', response.status);
+        console.log('API response headers:', response.headers);
+        
         if (!response.ok) {
-            throw new Error(`API request failed: ${response.status}`);
+            const errorText = await response.text();
+            console.error('API error response:', errorText);
+            throw new Error(`API request failed: ${response.status} - ${errorText}`);
         }
         
         const data = await response.json();
+        console.log('API response data:', data);
         dataOutput.textContent = JSON.stringify(data, null, 2);
     } catch (error) {
+        console.error('Error calling API:', error);
         dataOutput.textContent = `Error: ${error.message}`;
+        
+        // Additional debugging information
+        const debugInfo = {
+            timestamp: new Date().toISOString(),
+            apiUrl: config.apiUrl,
+            hasToken: !!idToken,
+            error: error.message,
+            userAgent: navigator.userAgent
+        };
+        
+        console.log('Debug info:', debugInfo);
     }
 }
