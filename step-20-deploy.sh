@@ -164,6 +164,16 @@ else
 fi
 
 # Update the app.js replacement section to use CloudFront API:
+echo "📝 Creating app.js from template..."
+if [ -f web/app.js.template ]; then
+    cp web/app.js.template web/app.js
+    echo "✅ app.js created from template"
+else
+    echo "❌ ERROR: app.js.template not found!"
+    exit 1
+fi
+
+echo "📝 Updating app.js with deployment values..."
 if [ -f web/app.js ]; then
     sed -i.bak "s|YOUR_USER_POOL_ID|$USER_POOL_ID|g" web/app.js
     sed -i.bak "s|YOUR_USER_POOL_CLIENT_ID|$USER_POOL_CLIENT_ID|g" web/app.js

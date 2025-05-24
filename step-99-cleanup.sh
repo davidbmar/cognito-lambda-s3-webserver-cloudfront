@@ -202,3 +202,9 @@ echo "You can check the status in the AWS Console."
 echo
 echo "To redeploy the application, run ./step-10-setup.sh followed by ./step-20-deploy.sh"
 echo "=================================================="
+
+# Check if CloudFormation stack is deleted
+aws cloudformation describe-stacks --stack-name dmar-cloudfront-app-dev 2>&1 | grep -q "does not exist" && echo "✅ Stack deleted" || echo "❌ Stack still exists"
+
+# Check if S3 bucket is deleted
+aws s3api head-bucket --bucket $(grep S3_BUCKET_NAME .env | cut -d= -f2) 2>&1 | grep -q "Not Found\|NoSuchBucket" && echo "✅ Bucket deleted" || echo "❌ Bucket still exists"
