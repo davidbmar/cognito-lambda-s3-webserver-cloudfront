@@ -9,6 +9,8 @@ web/callback.html
 apply-enhanced-auth.sh
 update-cognito-client.sh
 web/enhance-auth-function.js
+package-lock.json
+package.json
 
 # Node.js
 node_modules/
