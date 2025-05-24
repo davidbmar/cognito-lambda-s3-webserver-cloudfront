@@ -249,12 +249,7 @@ resources:
           ViewerCertificate:
             CloudFrontDefaultCertificate: true
 
-    CloudFrontOriginAccessIdentity:
-      Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
-      Properties:
-        CloudFrontOriginAccessIdentityConfig:
-          Comment: "Access identity for S3 bucket"
-
+#
     # Bucket policy for CloudFront OAC access
     WebsiteBucketPolicy:
       Type: AWS::S3::BucketPolicy
