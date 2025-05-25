@@ -20,15 +20,15 @@ provider:
             - iam:PassRole
           Resource: !GetAtt AuthenticatedRole.Arn
 
-          # S3 PERMISSIONS for listing the bucket: 
+        # S3 PERMISSIONS for listing the bucket: 
         - Effect: Allow
           Action:
             - s3:ListBucket
-          Resource: "arn:aws:s3:::#{WebsiteBucket}"
+          Resource: !Sub "arn:aws:s3:::${WebsiteBucket}"
         - Effect: Allow
           Action:
             - s3:GetObjectAttributes
-          Resource: "arn:aws:s3:::#{WebsiteBucket}/*"
+          Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/*"
 
 custom:
   s3Bucket: ${env:S3_BUCKET_NAME, '${self:service}-website-${sls:stage}-${aws:accountId}'}
