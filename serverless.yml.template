@@ -28,7 +28,20 @@ functions:
     handler: api/handler.getData
     events:
       - http:
-          path: data
+          path: api/data
+          method: get
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+  
+  # Add a new function for S3 listing (for future use)
+  listS3:
+    handler: api/handler.listS3Objects
+    events:
+      - http:
+          path: api/s3/list
           method: get
           cors: true
           authorizer:
@@ -170,7 +183,6 @@ resources:
           SigningBehavior: always
           SigningProtocol: sigv4
 
-
     # CloudFront Distribution with BOTH S3 and API Gateway origins
     CloudFrontDistribution:
       Type: AWS::CloudFront::Distribution
@@ -249,7 +261,6 @@ resources:
           ViewerCertificate:
             CloudFrontDefaultCertificate: true
 
-#
     # Bucket policy for CloudFront OAC access
     WebsiteBucketPolicy:
       Type: AWS::S3::BucketPolicy
@@ -276,7 +287,7 @@ resources:
       Value: !Ref WebsiteBucket
     ApiEndpoint:
       Description: URL of the API Gateway endpoint
-      Value: !Sub "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${sls:stage}/data"
+      Value: !Sub "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${sls:stage}/api/data"
     UserPoolId:
       Description: ID of the Cognito User Pool
       Value: !Ref UserPool

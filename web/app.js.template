@@ -8,7 +8,8 @@ const config = {
     userPoolClientId: 'YOUR_USER_POOL_CLIENT_ID',
     identityPoolId: 'YOUR_IDENTITY_POOL_ID',
     region: 'us-east-2', // Your AWS region
-    apiUrl: 'YOUR_CLOUDFRONT_API_ENDPOINT', // Changed to use CloudFront API endpoint
+    apiUrl: 'YOUR_CLOUDFRONT_API_ENDPOINT', // CloudFront API endpoint
+    s3ApiUrl: 'YOUR_CLOUDFRONT_S3_API_ENDPOINT', // CloudFront S3 API endpoint
     appUrl: 'YOUR_APP_URL'
 };
 

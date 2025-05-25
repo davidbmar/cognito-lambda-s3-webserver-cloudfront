@@ -179,6 +179,8 @@ if [ -f web/app.js ]; then
     sed -i.bak "s|YOUR_USER_POOL_CLIENT_ID|$USER_POOL_CLIENT_ID|g" web/app.js
     sed -i.bak "s|YOUR_IDENTITY_POOL_ID|$IDENTITY_POOL_ID|g" web/app.js
     # Use CloudFront API endpoint instead of direct API Gateway
+    sed -i.bak "s|YOUR_CLOUDFRONT_API_ENDPOINT|$CLOUDFRONT_API_ENDPOINT|g" web/app.js
+    sed -i.bak "s|YOUR_CLOUDFRONT_S3_API_ENDPOINT|${CLOUDFRONT_URL}/api/s3/list|g" web/app.js
     sed -i.bak "s|YOUR_API_ENDPOINT|$CLOUDFRONT_API_ENDPOINT|g" web/app.js
     sed -i.bak "s|YOUR_APP_URL|$CLOUDFRONT_URL|g" web/app.js
     sed -i.bak "s|YOUR_COGNITO_DOMAIN_PREFIX|$COGNITO_DOMAIN|g" web/app.js
