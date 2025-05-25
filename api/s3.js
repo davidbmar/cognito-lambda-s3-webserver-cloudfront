@@ -18,7 +18,9 @@ module.exports.listObjects = async (event) => {
     // Parse query parameters
     const queryParams = event.queryStringParameters || {};
     const onlyNames = queryParams.onlyNames === 'true';
-    const prefix = queryParams.prefix || 'uploads/'; // Default to uploads/ folder
+
+    //const prefix = queryParams.prefix || 'uploads/'; // Default to uploads/ folder
+    const prefix = queryParams.prefix || ''; // Default to root folder (all files)
 
     console.log(`Listing S3 objects in bucket: ${bucketName}, prefix: ${prefix}, onlyNames: ${onlyNames}`);
 
