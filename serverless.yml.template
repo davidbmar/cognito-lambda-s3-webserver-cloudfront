@@ -35,18 +35,6 @@ functions:
             type: COGNITO_USER_POOLS
             authorizerId:
               Ref: ApiGatewayAuthorizer
-functions:
-  userData:
-    handler: api/handler.getData
-    events:
-      - http:
-          path: api/data
-          method: get
-          cors: true
-          authorizer:
-            type: COGNITO_USER_POOLS
-            authorizerId:
-              Ref: ApiGatewayAuthorizer
 
   # This new function lists S3 files.
   listS3Files:
