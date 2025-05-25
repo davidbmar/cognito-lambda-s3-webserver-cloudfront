@@ -50,19 +50,6 @@ functions:
               Ref: ApiGatewayAuthorizer
 
   
-  # Add a new function for S3 listing (for future use)
-  listS3:
-    handler: api/handler.listS3Objects
-    events:
-      - http:
-          path: api/s3/list
-          method: get
-          cors: true
-          authorizer:
-            type: COGNITO_USER_POOLS
-            authorizerId:
-              Ref: ApiGatewayAuthorizer
-
   # Custom resource function to set identity pool roles
   setIdentityPoolRoles:
     handler: functions/setIdentityPoolRoles.handler
