@@ -24,7 +24,7 @@ custom:
   s3Bucket: ${env:S3_BUCKET_NAME, '${self:service}-website-${sls:stage}-${aws:accountId}'}
   
 functions:
-  api:
+  userData:
     handler: api/handler.getData
     events:
       - http:
