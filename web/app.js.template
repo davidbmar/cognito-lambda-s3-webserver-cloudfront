@@ -17,6 +17,7 @@ const config = {
 const loginButton = document.getElementById('login-button');
 const logoutButton = document.getElementById('logout-button');
 const getDataButton = document.getElementById('get-data-button');
+const listS3Button = document.getElementById('list-s3-button');
 const userEmailSpan = document.getElementById('user-email');
 const dataOutput = document.getElementById('data-output');
 const loginSection = document.getElementById('login-section');
@@ -73,6 +74,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (loginButton) loginButton.addEventListener('click', login);
     if (logoutButton) logoutButton.addEventListener('click', logout);
     if (getDataButton) getDataButton.addEventListener('click', getData);
+    if (listS3Button) listS3Button.addEventListener('click', listS3Files);
 });
 
 // Login function - this will be replaced during deployment with the correct domain
@@ -151,3 +153,58 @@ async function getData() {
         console.log('Debug info:', debugInfo);
     }
 }
+
+// List S3 files function
+async function listS3Files() {
+    const idToken = localStorage.getItem('id_token');
+    
+    if (!idToken) {
+        dataOutput.textContent = 'You must be logged in to access S3.';
+        return;
+    }
+    
+    try {
+        console.log('Making S3 list API call...');
+        dataOutput.textContent = 'Loading S3 files...';
+        
+        const response = await fetch('/api/s3/list?prefix=', {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        });
+        
+        console.log('S3 API response status:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('S3 API error response:', errorText);
+            throw new Error(`S3 API request failed: ${response.status} - ${errorText}`);
+        }
+        
+        const data = await response.json();
+        console.log('S3 API response data:', data);
+        
+        // Format the output nicely
+        let output = `S3 Files (${data.count} files found):\n\n`;
+        
+        if (data.files && data.files.length > 0) {
+            data.files.forEach((file, index) => {
+                output += `${index + 1}. ${file.key}\n`;
+                output += `   Size: ${file.size} bytes\n`;
+                output += `   Modified: ${new Date(file.lastModified).toLocaleDateString()}\n\n`;
+            });
+        } else {
+            output += 'No files found in bucket.';
+        }
+        
+        dataOutput.textContent = output;
+    } catch (error) {
+        console.error('Error calling S3 API:', error);
+        dataOutput.textContent = `Error: ${error.message}`;
+    }
+}
+
+
