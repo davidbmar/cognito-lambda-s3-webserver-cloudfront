@@ -49,6 +49,8 @@ functions:
   # This new function lists S3 files.
   listS3Files:
     handler: api/s3.listObjects
+    environment:
+      S3_BUCKET_NAME: ${self:custom.s3Bucket}
     events:
       - http:
           path: api/s3/list
