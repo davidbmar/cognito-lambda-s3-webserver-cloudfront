@@ -98,6 +98,46 @@ document.addEventListener('DOMContentLoaded', function() {
     if (logoutButton) logoutButton.addEventListener('click', logout);
     if (getDataButton) getDataButton.addEventListener('click', getData);
     if (listS3Button) listS3Button.addEventListener('click', listS3Files);
+
+    // View Memory button
+    const viewMemoryBtn = document.getElementById('view-memory');
+    if (viewMemoryBtn) {
+        viewMemoryBtn.addEventListener('click', showMemorySection);
+    }
+    
+    // Back to Files button
+    const backToFilesBtn = document.getElementById('back-to-files');
+    if (backToFilesBtn) {
+        backToFilesBtn.addEventListener('click', showFileSection);
+    }
+    
+    // Refresh Memory button
+    const refreshMemoryBtn = document.getElementById('refresh-memory');
+    if (refreshMemoryBtn) {
+        refreshMemoryBtn.addEventListener('click', function() {
+            const activeTab = document.querySelector('.memory-tab.active');
+            const scope = activeTab ? activeTab.getAttribute('data-scope') : 'public';
+            loadMemoryFiles(scope);
+        });
+    }
+    
+    // Memory tab switching
+    const memoryTabs = document.querySelectorAll('.memory-tab');
+    memoryTabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            // Remove active class from all tabs
+            memoryTabs.forEach(t => t.classList.remove('active'));
+            
+            // Add active class to clicked tab
+            this.classList.add('active');
+            
+            // Load memory files for the selected scope
+            const scope = this.getAttribute('data-scope');
+            loadMemoryFiles(scope);
+        });
+    });    
+
+
 });
 
 // Login function - this will be replaced during deployment with the correct domain
@@ -404,6 +444,278 @@ function getFileIcon(filename) {
 }
 
 
+// Memory browsing functions - Add these to your app.js.template
 
+// Show memory section and hide file section
+function showMemorySection() {
+    const authenticatedSection = document.getElementById('authenticated-section');
+    const memorySection = document.getElementById('memory-section');
+    
+    authenticatedSection.style.display = 'none';
+    memorySection.style.display = 'block';
+    
+    // Load public memory by default
+    loadMemoryFiles('public');
+}
+
+// Show file section and hide memory section
+function showFileSection() {
+    const authenticatedSection = document.getElementById('authenticated-section');
+    const memorySection = document.getElementById('memory-section');
+    
+    authenticatedSection.style.display = 'block';
+    memorySection.style.display = 'none';
+    
+    // Refresh file list
+    if (typeof listS3Files === 'function') {
+        listS3Files();
+    }
+}
+
+// Load memory files based on scope (public or user)
+async function loadMemoryFiles(scope = 'public') {
+    const idToken = localStorage.getItem('id_token');
+    const memoryContainer = document.getElementById('memory-container');
+    
+    if (!idToken) {
+        memoryContainer.innerHTML = '<div class="empty-state"><p>You must be logged in to view memory files.</p></div>';
+        return;
+    }
+    
+    try {
+        console.log(`Loading ${scope} memory files...`);
+        
+        // Show loading state
+        memoryContainer.innerHTML = `
+            <div class="empty-state">
+                <div class="loading-spinner"></div>
+                <h3>Loading memory files...</h3>
+            </div>
+        `;
+        
+        // Get user ID for user-scoped memory
+        let userId = 'unknown';
+        try {
+            const payload = JSON.parse(atob(idToken.split('.')[1]));
+            userId = payload.sub || 'unknown';
+        } catch (e) {
+            console.error('Error parsing token for user ID:', e);
+        }
+        
+        // Determine the prefix based on scope
+        let prefix;
+        if (scope === 'public') {
+            prefix = 'claude-memory/public/';
+        } else {
+            prefix = `claude-memory/${userId}/`;
+        }
+        
+        // Use the S3 list API with custom prefix and no user scoping
+        const response = await fetch(`/api/s3/list?prefix=${encodeURIComponent(prefix)}&userScope=false`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`API request failed: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Memory files response:', data);
+        
+        // Clear container
+        memoryContainer.innerHTML = '';
+        
+        if (data.files && data.files.length > 0) {
+            // Sort files by date (newest first)
+            const sortedFiles = data.files.sort((a, b) => 
+                new Date(b.lastModified) - new Date(a.lastModified)
+            );
+            
+            // Display memory files
+            for (const file of sortedFiles) {
+                if (file.key.endsWith('.json')) {
+                    await displayMemoryFile(file);
+                }
+            }
+        } else {
+            // Show empty state
+            memoryContainer.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-brain"></i>
+                    <h3>No ${scope} memory files found</h3>
+                    <p>Memory files will appear here when Claude stores memories using the Chrome extension.</p>
+                    ${scope === 'public' ? `
+                        <div class="upload-instructions">
+                            <strong>Test the memory system:</strong><br>
+                            Use the Chrome extension to capture Claude's memory outputs, or test with:<br>
+                            <code>curl -X POST ${config.appUrl}/api/memory/public -H "Content-Type: application/json" -d '{"test": "memory"}'</code>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+        
+    } catch (error) {
+        console.error('Error loading memory files:', error);
+        memoryContainer.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i>
+                <h3>Error loading memory files</h3>
+                <p>${error.message}</p>
+                <button class="btn btn-primary" onclick="loadMemoryFiles('${scope}')">
+                    <i class="fas fa-retry"></i>
+                    Try Again
+                </button>
+            </div>
+        `;
+    }
+}
+
+// Display a single memory file with content preview
+async function displayMemoryFile(file) {
+    const memoryContainer = document.getElementById('memory-container');
+    const idToken = localStorage.getItem('id_token');
+    
+    // Create memory card
+    const memoryCard = document.createElement('div');
+    memoryCard.className = 'memory-card';
+    
+    // Extract date from file path for grouping
+    const dateParts = file.key.match(/(\d{4}-\d{2}-\d{2})/);
+    const fileDate = dateParts ? dateParts[1] : 'Unknown';
+    const fileSize = formatFileSize(file.size);
+    
+    memoryCard.innerHTML = `
+        <div class="memory-header">
+            <div class="conversation-id">Memory File</div>
+            <div class="memory-meta">
+                <span class="memory-timestamp">
+                    <i class="fas fa-calendar"></i>
+                    ${fileDate}
+                </span>
+                <span>
+                    <i class="fas fa-hdd"></i>
+                    ${fileSize}
+                </span>
+            </div>
+        </div>
+        <div class="memory-content" id="content-${file.key.replace(/[^a-zA-Z0-9]/g, '_')}">
+            <div class="loading-spinner"></div>
+            Loading memory content...
+        </div>
+        <div class="memory-actions">
+            <button class="btn btn-primary btn-sm" onclick="downloadMemoryFile('${file.key}')">
+                <i class="fas fa-download"></i>
+                Download
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="toggleMemoryContent('${file.key.replace(/[^a-zA-Z0-9]/g, '_')}')">
+                <i class="fas fa-eye"></i>
+                Toggle View
+            </button>
+        </div>
+    `;
+    
+    memoryContainer.appendChild(memoryCard);
+    
+    // Load and display memory content
+    try {
+        const encodedKey = encodeURIComponent(file.key);
+        const response = await fetch(`/api/s3/download/${encodedKey}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (response.ok) {
+            const downloadData = await response.json();
+            
+            // Fetch the actual memory content
+            const memoryResponse = await fetch(downloadData.downloadUrl);
+            const memoryData = await memoryResponse.json();
+            
+            // Update memory card with actual content
+            const contentDiv = document.getElementById(`content-${file.key.replace(/[^a-zA-Z0-9]/g, '_')}`);
+            const conversationId = memoryData.conversationId || 'Unknown';
+            const source = memoryData.source || 'Unknown';
+            
+            // Update header with conversation info
+            const headerDiv = memoryCard.querySelector('.conversation-id');
+            headerDiv.textContent = `Conversation: ${conversationId}`;
+            
+            // Add source badge
+            const metaDiv = memoryCard.querySelector('.memory-meta');
+            metaDiv.innerHTML += `<span class="memory-source">${source}</span>`;
+            
+            // Display formatted content
+            contentDiv.innerHTML = `<pre>${JSON.stringify(memoryData, null, 2)}</pre>`;
+            
+        } else {
+            throw new Error('Failed to load memory content');
+        }
+        
+    } catch (error) {
+        console.error('Error loading memory content:', error);
+        const contentDiv = document.getElementById(`content-${file.key.replace(/[^a-zA-Z0-9]/g, '_')}`);
+        contentDiv.innerHTML = `<span style="color: #dc3545;">Error loading content: ${error.message}</span>`;
+    }
+}
+
+// Download memory file
+async function downloadMemoryFile(fileKey) {
+    const idToken = localStorage.getItem('id_token');
+    
+    if (!idToken) {
+        alert('You must be logged in to download files.');
+        return;
+    }
+    
+    try {
+        const encodedKey = encodeURIComponent(fileKey);
+        const response = await fetch(`/api/s3/download/${encodedKey}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Download request failed: ${response.status}`);
+        }
+        
+        const downloadData = await response.json();
+        
+        // Create and trigger download
+        const downloadLink = document.createElement('a');
+        downloadLink.href = downloadData.downloadUrl;
+        downloadLink.download = fileKey.split('/').pop();
+        downloadLink.style.display = 'none';
+        
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        
+    } catch (error) {
+        console.error('Error downloading memory file:', error);
+        alert(`Download failed: ${error.message}`);
+    }
+}
+
+// Toggle memory content visibility
+function toggleMemoryContent(contentId) {
+    const contentDiv = document.getElementById(`content-${contentId}`);
+    if (contentDiv.style.display === 'none') {
+        contentDiv.style.display = 'block';
+    } else {
+        contentDiv.style.display = 'none';
+    }
+}
 
 

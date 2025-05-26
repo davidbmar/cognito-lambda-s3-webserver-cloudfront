@@ -398,8 +398,53 @@
                             <i class="fas fa-server"></i>
                             Test API
                         </button>
+
+                        <button class="btn btn-secondary" id="view-memory">
+                            <i class="fas fa-brain"></i>
+                            View Memory
+                        </button>
+
                     </div>
                 </div>
+
+                <div id="memory-section" class="memory-section" style="display: none;">
+
+                    <div class="file-manager-header">
+                        <div>
+                            <div class="breadcrumb">
+                                <i class="fas fa-brain"></i>
+                                <span>Claude Memory</span>
+                            </div>
+                            <h2>Memory Storage</h2>
+                        </div>
+                        <div class="file-actions">
+                            <button class="btn btn-primary" id="refresh-memory">
+                                <i class="fas fa-sync-alt"></i>
+                                Refresh Memory
+                            </button>
+                            <button class="btn btn-secondary" id="back-to-files">
+                                <i class="fas fa-arrow-left"></i>
+                                Back to Files
+                            </button>
+                        </div>
+                    </div>
+                
+                    <div class="memory-tabs">
+                        <button class="btn btn-secondary memory-tab active" data-scope="public">
+                            <i class="fas fa-globe"></i>
+                            Public Memory
+                        </button>
+                        <button class="btn btn-secondary memory-tab" data-scope="user">
+                            <i class="fas fa-user"></i>
+                            My Memory
+                        </button>
+                    </div>
+                
+                    <div id="memory-container">
+                        <!-- Memory files will be loaded here -->
+                    </div>
+                </div>
+
 
                 <div id="file-container">
                     <!-- Files will be loaded here -->
