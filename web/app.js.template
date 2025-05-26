@@ -189,41 +189,159 @@ async function listS3Files() {
         const data = await response.json();
         console.log('S3 API response data:', data);
         
-        // Format the output nicely with download buttons
-        let output = `S3 Files (${data.count} files found):\n\n`;
+        // Clear the output and create a proper HTML interface
+        dataOutput.innerHTML = '';
         
         if (data.files && data.files.length > 0) {
+            // Create header
+            const header = document.createElement('h3');
+            header.textContent = `Your Files (${data.count} files found):`;
+            dataOutput.appendChild(header);
+            
+            // Create file list
             data.files.forEach((file, index) => {
+                const fileDiv = document.createElement('div');
+                fileDiv.style.cssText = 'margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;';
+                
                 // Use displayKey if available, otherwise use the full key
                 const displayName = file.displayKey || file.key || file;
                 const fullKey = file.key || file;
                 
-                output += `${index + 1}. ${displayName}\n`;
+                // File info
+                const fileInfo = document.createElement('div');
+                fileInfo.innerHTML = `
+                    <strong>${displayName}</strong><br>
+                    <small>Size: ${file.size} bytes | Modified: ${new Date(file.lastModified).toLocaleDateString()}</small>
+                `;
                 
-                if (typeof file === 'object') {
-                    output += `   Size: ${file.size} bytes\n`;
-                    output += `   Modified: ${new Date(file.lastModified).toLocaleDateString()}\n`;
-                    output += `   [Download] - Click to get download link for: ${fullKey}\n\n`;
-                } else {
-                    output += `   [Download] - Click to get download link for: ${fullKey}\n\n`;
-                }
+                // Download button
+                const downloadBtn = document.createElement('button');
+                downloadBtn.textContent = 'Download';
+                downloadBtn.style.cssText = 'margin-top: 5px; background-color: #008CBA; color: white; padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer;';
+                downloadBtn.onclick = () => downloadFile(fullKey, displayName);
+                
+                // Download status area
+                const statusDiv = document.createElement('div');
+                statusDiv.id = `status-${index}`;
+                statusDiv.style.cssText = 'margin-top: 5px; font-size: 12px; color: #666;';
+                
+                fileDiv.appendChild(fileInfo);
+                fileDiv.appendChild(downloadBtn);
+                fileDiv.appendChild(statusDiv);
+                dataOutput.appendChild(fileDiv);
             });
             
-            output += '\n--- Download Instructions ---\n';
-            output += 'To download a file, we need to implement the download button functionality.\n';
-            output += 'The download API endpoint is ready and working!';
         } else {
-            output += 'No files found in your directory.\n\n';
-            output += 'Upload some files to your user directory to see them here:\n';
-            output += `aws s3 cp <local-file> s3://${data.bucket}/users/${data.userId}/<filename>`;
+            const noFilesMsg = document.createElement('div');
+            noFilesMsg.innerHTML = `
+                <h3>No files found in your directory</h3>
+                <p>Upload some files to your user directory to see them here:</p>
+                <code>aws s3 cp &lt;local-file&gt; s3://${data.bucket}/users/${data.userId}/&lt;filename&gt;</code>
+            `;
+            dataOutput.appendChild(noFilesMsg);
         }
         
-        dataOutput.textContent = output;
     } catch (error) {
         console.error('Error calling S3 API:', error);
         dataOutput.textContent = `Error: ${error.message}`;
     }
 }
+
+// New function to handle file downloads
+async function downloadFile(fullKey, displayName) {
+    const idToken = localStorage.getItem('id_token');
+    
+    if (!idToken) {
+        alert('You must be logged in to download files.');
+        return;
+    }
+    
+    try {
+        console.log(`Requesting download URL for: ${fullKey}`);
+        
+        // Find the button that was clicked to show status
+        const allButtons = document.querySelectorAll('button');
+        let statusDiv = null;
+        for (let btn of allButtons) {
+            if (btn.textContent === 'Download' && btn.onclick.toString().includes(fullKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))) {
+                statusDiv = btn.nextElementSibling;
+                break;
+            }
+        }
+        
+        if (statusDiv) {
+            statusDiv.textContent = 'Generating download link...';
+            statusDiv.style.color = '#007cba';
+        }
+        
+        // Encode the file key for the URL path
+        const encodedKey = encodeURIComponent(fullKey);
+        
+        // Request pre-signed download URL
+        const response = await fetch(`/api/s3/download/${encodedKey}`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        });
+        
+        console.log('Download API response status:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Download API error response:', errorText);
+            throw new Error(`Download request failed: ${response.status} - ${errorText}`);
+        }
+        
+        const downloadData = await response.json();
+        console.log('Download API response data:', downloadData);
+        
+        if (statusDiv) {
+            statusDiv.textContent = 'Download link ready! Starting download...';
+            statusDiv.style.color = '#28a745';
+        }
+        
+        // Create a temporary link and trigger download
+        const downloadLink = document.createElement('a');
+        downloadLink.href = downloadData.downloadUrl;
+        downloadLink.download = displayName; // Suggest filename
+        downloadLink.style.display = 'none';
+        
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        
+        if (statusDiv) {
+            statusDiv.textContent = `Downloaded! Link expires in ${Math.round(downloadData.expiresIn/60)} minutes.`;
+            statusDiv.style.color = '#28a745';
+        }
+        
+        console.log(`Download initiated for: ${displayName}`);
+        
+    } catch (error) {
+        console.error('Error downloading file:', error);
+        
+        // Find status div for error display
+        const allButtons = document.querySelectorAll('button');
+        let statusDiv = null;
+        for (let btn of allButtons) {
+            if (btn.textContent === 'Download' && btn.onclick.toString().includes(fullKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))) {
+                statusDiv = btn.nextElementSibling;
+                break;
+            }
+        }
+        
+        if (statusDiv) {
+            statusDiv.textContent = `Download failed: ${error.message}`;
+            statusDiv.style.color = '#dc3545';
+        }
+        
+        alert(`Download failed: ${error.message}`);
+    }
+}
+
 
 
 
