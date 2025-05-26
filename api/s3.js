@@ -22,7 +22,8 @@ module.exports.listObjects = async (event) => {
     const queryParams = event.queryStringParameters || {};
     const onlyNames = queryParams.onlyNames === 'true';
     const userScope = queryParams.userScope !== 'false'; // Default to user-scoped
-    
+
+
     // Determine the prefix based on user scope
     let prefix;
     if (userScope) {
@@ -30,10 +31,15 @@ module.exports.listObjects = async (event) => {
       const userPrefix = `users/${userId}/`;
       prefix = queryParams.prefix ? `${userPrefix}${queryParams.prefix}` : userPrefix;
     } else {
-      // Global files (for admin or shared content) - be careful with this
+      // Global files - allow memory files and user files for authenticated users
       prefix = queryParams.prefix || '';
+      
+      // Security check: only allow memory paths and user paths when userScope=false
+      if (prefix && !prefix.startsWith('claude-memory/') && !prefix.startsWith(`users/${userId}/`)) {
+        throw new Error('Access denied: Invalid prefix for global scope');
+      }
     }
-
+    
     console.log(`Listing S3 objects in bucket: ${bucketName}, prefix: ${prefix}, onlyNames: ${onlyNames}`);
 
     // List objects in S3 bucket
