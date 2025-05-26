@@ -25,9 +25,20 @@ provider:
           Action:
             - s3:ListBucket
           Resource: !Sub "arn:aws:s3:::${WebsiteBucket}"
+        # ADDITIONAL S3 PERMISSIONS for download URL generation:
         - Effect: Allow
           Action:
-            - s3:GetObjectAttributes
+            - s3:GetObject
+            - s3:GetObjectVersion
+            - s3:HeadObject
+          Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/*"
+
+        # ADDITIONAL S3 PERMISSIONS for download URL generation:
+        - Effect: Allow
+          Action:
+            - s3:GetObject
+            - s3:GetObjectVersion
+            - s3:HeadObject
           Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/*"
 
 custom:
@@ -46,7 +57,7 @@ functions:
             authorizerId:
               Ref: ApiGatewayAuthorizer
 
-  # This new function lists S3 files.
+  # Enhanced S3 listing function with user scoping
   listS3Files:
     handler: api/s3.listObjects
     environment:
@@ -61,7 +72,25 @@ functions:
             authorizerId:
               Ref: ApiGatewayAuthorizer
 
-  
+  # NEW: Download URL generation function
+  getS3DownloadUrl:
+    handler: api/s3.getDownloadUrl
+    environment:
+      S3_BUCKET_NAME: ${self:custom.s3Bucket}
+    events:
+      - http:
+          path: api/s3/download/{key+}
+          method: get
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+          request:
+            parameters:
+              paths:
+                key: true
+
   # Custom resource function to set identity pool roles
   setIdentityPoolRoles:
     handler: functions/setIdentityPoolRoles.handler
@@ -313,6 +342,9 @@ resources:
     CloudFrontURL:
       Description: URL of the CloudFront distribution
       Value: !Sub "https://${CloudFrontDistribution.DomainName}"
-    CloudFrontApiEndpoint:
-      Description: URL of the API via CloudFront
-      Value: !Sub "https://${CloudFrontDistribution.DomainName}/api/data"
+    S3DownloadEndpoint:
+      Description: URL for S3 download API via CloudFront
+      Value: !Sub "https://${CloudFrontDistribution.DomainName}/api/s3/download"
+    S3DownloadEndpoint:
+      Description: URL for S3 download API via CloudFront
+      Value: !Sub "https://${CloudFrontDistribution.DomainName}/api/s3/download"
