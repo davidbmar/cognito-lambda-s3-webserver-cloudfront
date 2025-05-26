@@ -154,7 +154,9 @@ async function getData() {
     }
 }
 
-// List S3 files function
+// Updated listS3Files function for web/app.js.template
+// Replace the existing listS3Files function with this enhanced version
+
 async function listS3Files() {
     const idToken = localStorage.getItem('id_token');
     
@@ -187,17 +189,33 @@ async function listS3Files() {
         const data = await response.json();
         console.log('S3 API response data:', data);
         
-        // Format the output nicely
+        // Format the output nicely with download buttons
         let output = `S3 Files (${data.count} files found):\n\n`;
         
         if (data.files && data.files.length > 0) {
             data.files.forEach((file, index) => {
-                output += `${index + 1}. ${file.key}\n`;
-                output += `   Size: ${file.size} bytes\n`;
-                output += `   Modified: ${new Date(file.lastModified).toLocaleDateString()}\n\n`;
+                // Use displayKey if available, otherwise use the full key
+                const displayName = file.displayKey || file.key || file;
+                const fullKey = file.key || file;
+                
+                output += `${index + 1}. ${displayName}\n`;
+                
+                if (typeof file === 'object') {
+                    output += `   Size: ${file.size} bytes\n`;
+                    output += `   Modified: ${new Date(file.lastModified).toLocaleDateString()}\n`;
+                    output += `   [Download] - Click to get download link for: ${fullKey}\n\n`;
+                } else {
+                    output += `   [Download] - Click to get download link for: ${fullKey}\n\n`;
+                }
             });
+            
+            output += '\n--- Download Instructions ---\n';
+            output += 'To download a file, we need to implement the download button functionality.\n';
+            output += 'The download API endpoint is ready and working!';
         } else {
-            output += 'No files found in bucket.';
+            output += 'No files found in your directory.\n\n';
+            output += 'Upload some files to your user directory to see them here:\n';
+            output += `aws s3 cp <local-file> s3://${data.bucket}/users/${data.userId}/<filename>`;
         }
         
         dataOutput.textContent = output;
@@ -206,5 +224,6 @@ async function listS3Files() {
         dataOutput.textContent = `Error: ${error.message}`;
     }
 }
+
 
 

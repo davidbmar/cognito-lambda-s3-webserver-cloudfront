@@ -345,6 +345,3 @@ resources:
     S3DownloadEndpoint:
       Description: URL for S3 download API via CloudFront
       Value: !Sub "https://${CloudFrontDistribution.DomainName}/api/s3/download"
-    S3DownloadEndpoint:
-      Description: URL for S3 download API via CloudFront
-      Value: !Sub "https://${CloudFrontDistribution.DomainName}/api/s3/download"
