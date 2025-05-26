@@ -446,17 +446,22 @@ function getFileIcon(filename) {
 
 // Memory browsing functions - Add these to your app.js.template
 
-// Show memory section and hide file section
 function showMemorySection() {
     const authenticatedSection = document.getElementById('authenticated-section');
     const memorySection = document.getElementById('memory-section');
     
+    // Hide file section
     authenticatedSection.style.display = 'none';
+    
+    // Show memory section and ensure it's visible
     memorySection.style.display = 'block';
+    memorySection.style.position = 'relative';
+    memorySection.style.zIndex = '1';
     
     // Load public memory by default
     loadMemoryFiles('public');
 }
+
 
 // Show file section and hide memory section
 function showFileSection() {
