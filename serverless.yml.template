@@ -41,6 +41,13 @@ provider:
             - s3:HeadObject
           Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/*"
 
+        # S3 write permissions for memory storage
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+            - s3:PutObjectAcl
+          Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/claude-memory/*"
+
 custom:
   s3Bucket: ${env:S3_BUCKET_NAME, '${self:service}-website-${sls:stage}-${aws:accountId}'}
   
@@ -97,6 +104,32 @@ functions:
     environment:
       IDENTITY_POOL_ID: !Ref IdentityPool
       AUTHENTICATED_ROLE_ARN: !GetAtt AuthenticatedRole.Arn
+
+  # Memory storage function for Chrome extension (authenticated)
+  storeClaudeMemory:
+    handler: api/memory.storeMemory
+    environment:
+      S3_BUCKET_NAME: ${self:custom.s3Bucket}
+    events:
+      - http:
+          path: api/memory
+          method: post
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+
+  # NEW: Public memory storage (for testing without auth)
+  storeClaudeMemoryPublic:
+    handler: api/memory.storeMemoryPublic
+    environment:
+      S3_BUCKET_NAME: ${self:custom.s3Bucket}
+    events:
+      - http:
+          path: api/memory/public
+          method: post
+          cors: true
 
 resources:
   Resources:

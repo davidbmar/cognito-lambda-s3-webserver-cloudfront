@@ -142,17 +142,26 @@ module.exports.getDownloadUrl = async (event) => {
 
     // Decode the file key (in case it was URL encoded)
     const decodedKey = decodeURIComponent(fileKey);
-    
-    // Security check: Ensure user can only access their own files
+
+   
+    // REPLACE with this enhanced security check:
+    // Security check: Allow access to user files AND their memory files
     const userPrefix = `users/${userId}/`;
-    if (!decodedKey.startsWith(userPrefix)) {
+    const userMemoryPrefix = `claude-memory/${userId}/`;
+    const publicMemoryPrefix = `claude-memory/public/`;
+    
+    if (!decodedKey.startsWith(userPrefix) && 
+        !decodedKey.startsWith(userMemoryPrefix) && 
+        !decodedKey.startsWith(publicMemoryPrefix)) {
       return {
         statusCode: 403,
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Credentials': true,
         },
-        body: JSON.stringify({ error: 'Access denied: You can only access your own files' }),
+        body: JSON.stringify({ 
+          error: 'Access denied: You can only access your own files and memory data' 
+        }),
       };
     }
 
