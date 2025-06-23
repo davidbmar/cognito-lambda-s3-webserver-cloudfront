@@ -342,6 +342,179 @@
                 transform: translateY(0);
             }
         }
+
+        /* Upload Modal Styles */
+        .upload-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .upload-modal-content {
+            background: white;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .upload-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 2rem;
+            color: #666;
+            cursor: pointer;
+            line-height: 1;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+        }
+
+        .close-modal:hover {
+            color: #333;
+        }
+
+        .upload-zone {
+            padding: 3rem;
+            text-align: center;
+            border: 2px dashed #667eea;
+            border-radius: 15px;
+            margin: 1.5rem;
+            background: #f8f9ff;
+            transition: all 0.3s ease;
+        }
+
+        .upload-zone.drag-over {
+            background: #e8ecff;
+            border-color: #5568d9;
+            transform: scale(1.02);
+        }
+
+        .upload-zone p {
+            margin: 1rem 0;
+            color: #666;
+        }
+
+        .upload-queue {
+            padding: 1.5rem;
+        }
+
+        .upload-queue h4 {
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .upload-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 0.5rem;
+            position: relative;
+        }
+
+        .upload-item-icon {
+            font-size: 1.5rem;
+            color: #667eea;
+            margin-right: 1rem;
+        }
+
+        .upload-item-info {
+            flex: 1;
+        }
+
+        .upload-item-name {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .upload-item-size {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .upload-item-status {
+            margin-left: 1rem;
+            font-size: 0.85rem;
+        }
+
+        .upload-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: #e9ecef;
+            border-radius: 0 0 10px 10px;
+            overflow: hidden;
+        }
+
+        .upload-progress-bar {
+            height: 100%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .upload-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            justify-content: center;
+        }
+
+        .upload-status-pending {
+            color: #666;
+        }
+
+        .upload-status-uploading {
+            color: #1976d2;
+        }
+
+        .upload-status-success {
+            color: #2e7d32;
+        }
+
+        .upload-status-error {
+            color: #c62828;
+        }
+
+        .memory-section {
+            padding: 2rem;
+        }
+
+        .memory-tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .memory-tab {
+            border-radius: 8px;
+        }
+
+        .memory-tab.active {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -390,6 +563,10 @@
                         <h2>File Manager</h2>
                     </div>
                     <div class="file-actions">
+                        <button class="btn btn-primary" id="upload-button">
+                            <i class="fas fa-upload"></i>
+                            Upload Files
+                        </button>
                         <button class="btn btn-primary" id="refresh-files">
                             <i class="fas fa-sync-alt"></i>
                             Refresh
@@ -407,6 +584,39 @@
 
                 <div id="file-container">
                     <!-- Files will be loaded here -->
+                </div>
+                
+                <!-- File Upload Modal -->
+                <div id="upload-modal" class="upload-modal" style="display: none;">
+                    <div class="upload-modal-content">
+                        <div class="upload-modal-header">
+                            <h3>Upload Files</h3>
+                            <button class="close-modal" id="close-upload">&times;</button>
+                        </div>
+                        <div class="upload-zone" id="upload-zone">
+                            <i class="fas fa-cloud-upload-alt" style="font-size: 3rem; color: #667eea;"></i>
+                            <p>Drag and drop files here or click to browse</p>
+                            <input type="file" id="file-input" multiple style="display: none;">
+                            <button class="btn btn-primary" id="browse-files">
+                                <i class="fas fa-folder-open"></i>
+                                Browse Files
+                            </button>
+                        </div>
+                        <div id="upload-queue" class="upload-queue" style="display: none;">
+                            <h4>Upload Queue</h4>
+                            <div id="upload-items"></div>
+                            <div class="upload-actions">
+                                <button class="btn btn-primary" id="start-upload">
+                                    <i class="fas fa-upload"></i>
+                                    Start Upload
+                                </button>
+                                <button class="btn btn-secondary" id="clear-queue">
+                                    <i class="fas fa-times"></i>
+                                    Clear All
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 

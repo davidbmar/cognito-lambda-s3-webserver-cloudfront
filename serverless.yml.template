@@ -47,6 +47,13 @@ provider:
             - s3:PutObject
             - s3:PutObjectAcl
           Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/claude-memory/*"
+        
+        # S3 write permissions for user file uploads
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+            - s3:PutObjectAcl
+          Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/users/*"
 
 custom:
   s3Bucket: ${env:S3_BUCKET_NAME, '${self:service}-website-${sls:stage}-${aws:accountId}'}
@@ -97,6 +104,21 @@ functions:
             parameters:
               paths:
                 key: true
+
+  # S3 upload URL generator
+  getS3UploadUrl:
+    handler: api/s3.getUploadUrl
+    environment:
+      S3_BUCKET_NAME: ${self:custom.s3Bucket}
+    events:
+      - http:
+          path: api/s3/upload
+          method: post
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
 
   # Custom resource function to set identity pool roles
   setIdentityPoolRoles:

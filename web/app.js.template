@@ -723,4 +723,232 @@ function toggleMemoryContent(contentId) {
     }
 }
 
+// File Upload Functionality
+let uploadQueue = [];
+
+// Initialize upload functionality
+function initializeUpload() {
+    const uploadButton = document.getElementById('upload-button');
+    const uploadModal = document.getElementById('upload-modal');
+    const closeUpload = document.getElementById('close-upload');
+    const fileInput = document.getElementById('file-input');
+    const browseFiles = document.getElementById('browse-files');
+    const uploadZone = document.getElementById('upload-zone');
+    const startUpload = document.getElementById('start-upload');
+    const clearQueue = document.getElementById('clear-queue');
+    
+    // Open upload modal
+    uploadButton?.addEventListener('click', () => {
+        uploadModal.style.display = 'flex';
+    });
+    
+    // Close upload modal
+    closeUpload?.addEventListener('click', () => {
+        uploadModal.style.display = 'none';
+    });
+    
+    // Close modal when clicking outside
+    uploadModal?.addEventListener('click', (e) => {
+        if (e.target === uploadModal) {
+            uploadModal.style.display = 'none';
+        }
+    });
+    
+    // Browse files button
+    browseFiles?.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    // File input change
+    fileInput?.addEventListener('change', (e) => {
+        handleFileSelect(e.target.files);
+    });
+    
+    // Drag and drop
+    uploadZone?.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('drag-over');
+    });
+    
+    uploadZone?.addEventListener('dragleave', () => {
+        uploadZone.classList.remove('drag-over');
+    });
+    
+    uploadZone?.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('drag-over');
+        handleFileSelect(e.dataTransfer.files);
+    });
+    
+    // Start upload button
+    startUpload?.addEventListener('click', startUploadProcess);
+    
+    // Clear queue button
+    clearQueue?.addEventListener('click', () => {
+        uploadQueue = [];
+        updateUploadQueue();
+    });
+}
+
+// Handle file selection
+function handleFileSelect(files) {
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    
+    for (let file of files) {
+        if (file.size > maxSize) {
+            alert(`File "${file.name}" exceeds maximum size of 100MB`);
+            continue;
+        }
+        
+        // Check if file already in queue
+        if (!uploadQueue.find(f => f.name === file.name)) {
+            uploadQueue.push({
+                file: file,
+                name: file.name,
+                size: file.size,
+                type: file.type || 'application/octet-stream',
+                status: 'pending',
+                progress: 0
+            });
+        }
+    }
+    
+    updateUploadQueue();
+}
+
+// Update upload queue display
+function updateUploadQueue() {
+    const uploadQueueDiv = document.getElementById('upload-queue');
+    const uploadItems = document.getElementById('upload-items');
+    
+    if (uploadQueue.length === 0) {
+        uploadQueueDiv.style.display = 'none';
+        return;
+    }
+    
+    uploadQueueDiv.style.display = 'block';
+    uploadItems.innerHTML = uploadQueue.map((item, index) => `
+        <div class="upload-item" id="upload-item-${index}">
+            <i class="upload-item-icon fas fa-file"></i>
+            <div class="upload-item-info">
+                <div class="upload-item-name">${item.name}</div>
+                <div class="upload-item-size">${formatFileSize(item.size)}</div>
+            </div>
+            <div class="upload-item-status upload-status-${item.status}">
+                ${getStatusText(item.status)}
+            </div>
+            <div class="upload-progress">
+                <div class="upload-progress-bar" style="width: ${item.progress}%"></div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Format file size
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Get status text
+function getStatusText(status) {
+    const statusMap = {
+        'pending': 'Pending',
+        'uploading': 'Uploading...',
+        'success': 'Uploaded',
+        'error': 'Failed'
+    };
+    return statusMap[status] || status;
+}
+
+// Start upload process
+async function startUploadProcess() {
+    const idToken = localStorage.getItem('id_token');
+    
+    if (!idToken) {
+        alert('You must be logged in to upload files.');
+        return;
+    }
+    
+    const pendingFiles = uploadQueue.filter(f => f.status === 'pending' || f.status === 'error');
+    
+    for (let i = 0; i < pendingFiles.length; i++) {
+        await uploadFile(pendingFiles[i], uploadQueue.indexOf(pendingFiles[i]));
+    }
+    
+    // Refresh file list after all uploads
+    setTimeout(() => {
+        listS3Files();
+    }, 1000);
+}
+
+// Upload individual file
+async function uploadFile(item, index) {
+    const idToken = localStorage.getItem('id_token');
+    
+    try {
+        // Update status
+        item.status = 'uploading';
+        updateUploadQueue();
+        
+        // Get presigned URL
+        const response = await fetch(`/api/s3/upload`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                fileName: item.name,
+                contentType: item.type,
+                fileSize: item.size
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to get upload URL: ${response.status}`);
+        }
+        
+        const uploadData = await response.json();
+        
+        // Upload file to S3
+        const uploadResponse = await fetch(uploadData.uploadUrl, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': item.type
+            },
+            body: item.file,
+            onUploadProgress: (e) => {
+                if (e.lengthComputable) {
+                    item.progress = Math.round((e.loaded / e.total) * 100);
+                    updateUploadQueue();
+                }
+            }
+        });
+        
+        if (!uploadResponse.ok) {
+            throw new Error(`Upload failed: ${uploadResponse.status}`);
+        }
+        
+        // Update status
+        item.status = 'success';
+        item.progress = 100;
+        updateUploadQueue();
+        
+    } catch (error) {
+        console.error('Error uploading file:', error);
+        item.status = 'error';
+        updateUploadQueue();
+        alert(`Failed to upload ${item.name}: ${error.message}`);
+    }
+}
+
+// Initialize upload when document is ready
+document.addEventListener('DOMContentLoaded', () => {
+    initializeUpload();
+});
+
 

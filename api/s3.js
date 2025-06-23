@@ -229,3 +229,104 @@ module.exports.getDownloadUrl = async (event) => {
     };
   }
 };
+
+// New function for generating pre-signed upload URLs
+module.exports.getUploadUrl = async (event) => {
+  try {
+    // Get user claims from the authorizer
+    const claims = event.requestContext?.authorizer?.claims || {};
+    const email = claims.email || 'Anonymous';
+    const userId = claims.sub || 'unknown';
+    
+    console.log(`User ${email} (${userId}) requesting upload URL`);
+
+    // Get bucket name from environment variable
+    const bucketName = process.env.S3_BUCKET_NAME;
+    if (!bucketName) {
+      throw new Error('S3_BUCKET_NAME environment variable not set');
+    }
+
+    // Parse request body
+    const body = JSON.parse(event.body || '{}');
+    const fileName = body.fileName;
+    const contentType = body.contentType || 'application/octet-stream';
+    const fileSize = body.fileSize;
+
+    // Validate input
+    if (!fileName) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ error: 'fileName is required' }),
+      };
+    }
+
+    // Validate file size (max 100MB)
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    if (fileSize && fileSize > maxSize) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ 
+          error: `File size exceeds maximum allowed size of ${maxSize / 1024 / 1024}MB` 
+        }),
+      };
+    }
+
+    // Sanitize filename - remove any path traversal attempts
+    const sanitizedFileName = fileName.split('/').pop().split('\\').pop();
+    
+    // Create the S3 key for the user's file
+    const fileKey = `users/${userId}/${sanitizedFileName}`;
+    
+    console.log(`Generating upload URL for ${fileKey}, content-type: ${contentType}`);
+
+    // Generate pre-signed URL for upload (valid for 5 minutes)
+    const uploadUrl = s3.getSignedUrl('putObject', {
+      Bucket: bucketName,
+      Key: fileKey,
+      Expires: 60 * 5, // 5 minutes
+      ContentType: contentType
+    });
+
+    console.log(`Generated upload URL for ${fileKey}`);
+
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': true,
+      },
+      body: JSON.stringify({
+        message: 'Upload URL generated successfully',
+        user: email,
+        userId: userId,
+        fileName: sanitizedFileName,
+        fileKey: fileKey,
+        uploadUrl: uploadUrl,
+        contentType: contentType,
+        expiresIn: 300, // 5 minutes in seconds
+        timestamp: new Date().toISOString()
+      }),
+    };
+  } catch (error) {
+    console.error('Error generating upload URL:', error);
+    return {
+      statusCode: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': true,
+      },
+      body: JSON.stringify({ 
+        error: error.message,
+        timestamp: new Date().toISOString()
+      }),
+    };
+  }
+};
