@@ -1,5 +1,7 @@
 
-<img width="1573" alt="Screenshot 2025-06-23 at 12 14 53 AM" src="https://github.com/user-attachments/assets/fc0c2d86-1f12-460f-b229-5822a4fd5b5c" />
+<img width="1478" alt="Screenshot 2025-06-23 at 12 35 40 AM" src="https://github.com/user-attachments/assets/a6a5ecf4-49c8-4b7a-9444-9e19c8e838bf" />
+<img width="1386" alt="Screenshot 2025-06-23 at 12 35 33 AM" src="https://github.com/user-attachments/assets/b386a9ab-55e6-4d5e-bb6e-ebcaf64adf66" />
+
 
 
 # AWS Serverless Application with Cognito Authentication and CloudFront
