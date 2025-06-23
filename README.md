@@ -1,3 +1,7 @@
+
+<img width="1573" alt="Screenshot 2025-06-23 at 12 14 53 AM" src="https://github.com/user-attachments/assets/fc0c2d86-1f12-460f-b229-5822a4fd5b5c" />
+
+
 # AWS Serverless Application with Cognito Authentication and CloudFront
 
 This guide walks through setting up a complete serverless application on AWS with Cognito authentication, API Gateway, Lambda, S3 for web hosting, and CloudFront for secure HTTPS access.
