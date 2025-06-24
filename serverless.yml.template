@@ -54,6 +54,12 @@ provider:
             - s3:PutObject
             - s3:PutObjectAcl
           Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/users/*"
+        
+        # S3 delete permissions for user files
+        - Effect: Allow
+          Action:
+            - s3:DeleteObject
+          Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/users/*"
 
 custom:
   s3Bucket: ${env:S3_BUCKET_NAME, '${self:service}-website-${sls:stage}-${aws:accountId}'}
@@ -119,6 +125,25 @@ functions:
             type: COGNITO_USER_POOLS
             authorizerId:
               Ref: ApiGatewayAuthorizer
+
+  # S3 delete function
+  deleteS3Object:
+    handler: api/s3.deleteObject
+    environment:
+      S3_BUCKET_NAME: ${self:custom.s3Bucket}
+    events:
+      - http:
+          path: api/s3/delete/{key+}
+          method: delete
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+          request:
+            parameters:
+              paths:
+                key: true
 
   # Custom resource function to set identity pool roles
   setIdentityPoolRoles:

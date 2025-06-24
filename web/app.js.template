@@ -229,10 +229,180 @@ async function getData() {
 }
 
 
+// File type detection and icon mapping
+function getFileIcon(fileName, isFolder = false) {
+    // Handle folders first
+    if (isFolder || fileName.endsWith('/')) {
+        return { icon: 'fas fa-folder', color: '#ffc107' };
+    }
+    
+    const extension = fileName.split('.').pop().toLowerCase();
+    
+    // Define icon mappings by file type
+    const iconMap = {
+        // Documents
+        'pdf': { icon: 'fas fa-file-pdf', color: '#dc3545' },
+        'doc': { icon: 'fas fa-file-word', color: '#2b5797' },
+        'docx': { icon: 'fas fa-file-word', color: '#2b5797' },
+        'txt': { icon: 'fas fa-file-alt', color: '#6c757d' },
+        
+        // Images
+        'jpg': { icon: 'fas fa-file-image', color: '#28a745' },
+        'jpeg': { icon: 'fas fa-file-image', color: '#28a745' },
+        'png': { icon: 'fas fa-file-image', color: '#28a745' },
+        'gif': { icon: 'fas fa-file-image', color: '#28a745' },
+        'svg': { icon: 'fas fa-file-image', color: '#28a745' },
+        
+        // Spreadsheets
+        'xls': { icon: 'fas fa-file-excel', color: '#217346' },
+        'xlsx': { icon: 'fas fa-file-excel', color: '#217346' },
+        'csv': { icon: 'fas fa-file-csv', color: '#217346' },
+        
+        // Archives
+        'zip': { icon: 'fas fa-file-archive', color: '#ffc107' },
+        'rar': { icon: 'fas fa-file-archive', color: '#ffc107' },
+        '7z': { icon: 'fas fa-file-archive', color: '#ffc107' },
+        'tar': { icon: 'fas fa-file-archive', color: '#ffc107' },
+        'gz': { icon: 'fas fa-file-archive', color: '#ffc107' },
+        
+        // Code
+        'js': { icon: 'fas fa-file-code', color: '#563d7c' },
+        'json': { icon: 'fas fa-file-code', color: '#563d7c' },
+        'html': { icon: 'fas fa-file-code', color: '#e34c26' },
+        'css': { icon: 'fas fa-file-code', color: '#1572b6' },
+        'py': { icon: 'fas fa-file-code', color: '#3776ab' },
+        
+        // Audio/Video
+        'mp3': { icon: 'fas fa-file-audio', color: '#9c27b0' },
+        'wav': { icon: 'fas fa-file-audio', color: '#9c27b0' },
+        'mp4': { icon: 'fas fa-file-video', color: '#ff5722' },
+        'avi': { icon: 'fas fa-file-video', color: '#ff5722' },
+        'mov': { icon: 'fas fa-file-video', color: '#ff5722' },
+        
+        // Default
+        'default': { icon: 'fas fa-file', color: '#6c757d' }
+    };
+    
+    return iconMap[extension] || iconMap['default'];
+}
+
+// Simple folder detection and navigation
+let currentPath = '';
+
+function isFolder(fileName) {
+    return fileName.endsWith('/');
+}
+
+function extractFolders(files) {
+    const folders = new Set();
+    const fileList = [];
+    
+    files.forEach(file => {
+        const relativePath = file.displayKey || file.key;
+        
+        // If we're in a subfolder, check if this file belongs to current path
+        if (currentPath && !relativePath.startsWith(currentPath)) {
+            return;
+        }
+        
+        // Remove current path prefix
+        const pathWithoutPrefix = currentPath ? relativePath.replace(currentPath, '') : relativePath;
+        
+        // Split path into parts
+        const pathParts = pathWithoutPrefix.split('/').filter(p => p.length > 0);
+        
+        if (pathParts.length >= 2) {
+            // This file is inside a subfolder
+            const folderName = pathParts[0];
+            const fileName = pathParts[1];
+            
+            // If this is a .folder marker file, extract the folder name
+            if (fileName === '.folder') {
+                folders.add(folderName);
+            } else {
+                // Regular file in subfolder - still add the folder
+                folders.add(folderName);
+            }
+        } else if (pathParts.length === 1) {
+            // This is a file in the current directory
+            const fileName = pathParts[0];
+            if (fileName !== '.folder') {
+                // Only add actual files, skip any stray .folder files
+                fileList.push(file);
+            }
+        }
+    });
+    
+    // Convert folders to file-like objects
+    const folderObjects = Array.from(folders).map(folderName => ({
+        key: currentPath + folderName + '/',
+        displayKey: folderName, // Clean folder name without slashes
+        size: 0,
+        lastModified: new Date(),
+        isFolder: true
+    }));
+    
+    return [...folderObjects, ...fileList];
+}
+
+function navigateToFolder(folderPath) {
+    currentPath = folderPath;
+    updateBreadcrumb();
+    listS3Files();
+}
+
+function navigateUp() {
+    if (currentPath) {
+        // Remove last folder from path
+        const pathParts = currentPath.split('/').filter(p => p.length > 0);
+        pathParts.pop();
+        currentPath = pathParts.length > 0 ? pathParts.join('/') + '/' : '';
+        updateBreadcrumb();
+        listS3Files();
+    }
+}
+
+function updateBreadcrumb() {
+    const breadcrumbNav = document.getElementById('breadcrumb-nav');
+    if (!breadcrumbNav) return;
+    
+    // Start with home
+    let breadcrumbHTML = `
+        <div class="breadcrumb-item" onclick="navigateToFolder('')">
+            <i class="fas fa-home"></i>
+            <span>My Files</span>
+        </div>
+    `;
+    
+    // Add path segments
+    if (currentPath) {
+        const pathParts = currentPath.split('/').filter(p => p.length > 0);
+        let cumulativePath = '';
+        
+        pathParts.forEach((part, index) => {
+            cumulativePath += part + '/';
+            breadcrumbHTML += `
+                <span class="breadcrumb-separator">
+                    <i class="fas fa-chevron-right"></i>
+                </span>
+                <div class="breadcrumb-item" onclick="navigateToFolder('${cumulativePath}')">
+                    <i class="fas fa-folder"></i>
+                    <span>${part}</span>
+                </div>
+            `;
+        });
+    }
+    
+    breadcrumbNav.innerHTML = breadcrumbHTML;
+}
+
 // Enhanced listS3Files function for modern UI
 async function listS3Files() {
     const idToken = localStorage.getItem('id_token');
     const fileContainer = document.getElementById('file-container');
+    
+    // Update breadcrumb navigation
+    updateBreadcrumb();
     
     if (!idToken) {
         fileContainer.innerHTML = '<div class="empty-state"><p>You must be logged in to access files.</p></div>';
@@ -265,51 +435,105 @@ async function listS3Files() {
         }
         
         const data = await response.json();
-        console.log('S3 API response data:', data);
         
         // Clear container
         fileContainer.innerHTML = '';
         
         if (data.files && data.files.length > 0) {
-            // Create file grid
-            const fileGrid = document.createElement('div');
-            fileGrid.className = 'file-grid';
+            // Extract folders and files for current directory
+            const items = extractFolders(data.files);
             
-            data.files.forEach((file, index) => {
-                const displayName = file.displayKey || file.key || file;
-                const fullKey = file.key || file;
-                const fileSize = formatFileSize(file.size);
-                const fileDate = new Date(file.lastModified).toLocaleDateString();
-                const fileIcon = getFileIcon(displayName);
+            // Create file list
+            const fileList = document.createElement('div');
+            fileList.className = 'file-list';
+            
+            items.forEach((item, index) => {
+                const displayName = item.displayKey || item.key || item;
+                const fullKey = item.key || item;
+                const isFolder = item.isFolder || false;
+                const fileSize = isFolder ? '' : formatFileSize(item.size);
+                const fileDate = new Date(item.lastModified).toLocaleDateString();
+                const fileTypeInfo = getFileIcon(displayName, isFolder);
                 
-                const fileCard = document.createElement('div');
-                fileCard.className = 'file-card';
-                fileCard.innerHTML = `
-                    <div class="file-icon">
-                        <i class="${fileIcon}"></i>
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-list-item';
+                fileItem.innerHTML = `
+                    <div class="file-list-icon">
+                        <i class="${fileTypeInfo.icon}" style="color: ${fileTypeInfo.color};"></i>
                     </div>
-                    <div class="file-name">${displayName}</div>
-                    <div class="file-meta">
-                        <span>${fileSize}</span>
-                        <span>${fileDate}</span>
+                    <div class="file-list-info">
+                        <div class="file-list-name">${displayName}</div>
+                        <div class="file-list-meta">
+                            ${isFolder ? 
+                                '<span><i class="fas fa-folder-open"></i> Folder</span>' : 
+                                `<span><i class="fas fa-hdd"></i> ${fileSize}</span>`
+                            }
+                            <span><i class="fas fa-calendar"></i> ${fileDate}</span>
+                        </div>
                     </div>
-                    <div class="file-actions-card">
-                        <button class="btn btn-primary btn-sm download-btn" data-key="${fullKey}" data-name="${displayName}">
-                            <i class="fas fa-download"></i>
-                            Download
-                        </button>
+                    <div class="file-list-actions">
+                        ${isFolder ? 
+                            `<button class="btn btn-secondary btn-sm open-btn">
+                                <i class="fas fa-folder-open"></i>
+                                Open
+                            </button>
+                            <button class="btn btn-danger btn-sm delete-btn" data-key="${fullKey}" data-name="${displayName}" data-folder="true">
+                                <i class="fas fa-trash"></i>
+                                Delete
+                            </button>` :
+                            `<button class="btn btn-primary btn-sm download-btn" data-key="${fullKey}" data-name="${displayName}">
+                                <i class="fas fa-download"></i>
+                                Download
+                            </button>
+                            <button class="btn btn-danger btn-sm delete-btn" data-key="${fullKey}" data-name="${displayName}">
+                                <i class="fas fa-trash"></i>
+                                Delete
+                            </button>`
+                        }
                     </div>
-                    <div class="status-indicator" id="status-${index}"></div>
                 `;
                 
-                // Add download event listener
-                const downloadBtn = fileCard.querySelector('.download-btn');
-                downloadBtn.addEventListener('click', () => downloadFile(fullKey, displayName, index));
+                // Add delete event listener for both files and folders
+                const deleteBtn = fileItem.querySelector('.delete-btn');
+                deleteBtn?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteFile(fullKey, displayName, isFolder);
+                });
                 
-                fileGrid.appendChild(fileCard);
+                if (isFolder) {
+                    // Add folder navigation
+                    const openBtn = fileItem.querySelector('.open-btn');
+                    openBtn?.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        navigateToFolder(fullKey);
+                    });
+                    
+                    // Add click handler to navigate on row click (mobile friendly)
+                    fileItem.addEventListener('click', (e) => {
+                        // Don't navigate if clicking on buttons
+                        if (e.target.closest('button')) return;
+                        navigateToFolder(fullKey);
+                    });
+                } else {
+                    // Add download event listener
+                    const downloadBtn = fileItem.querySelector('.download-btn');
+                    downloadBtn?.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        downloadFile(fullKey, displayName, index);
+                    });
+                    
+                    // Add click handler to download on row click (mobile friendly)
+                    fileItem.addEventListener('click', (e) => {
+                        // Don't download if clicking on buttons
+                        if (e.target.closest('button')) return;
+                        downloadFile(fullKey, displayName, index);
+                    });
+                }
+                
+                fileList.appendChild(fileItem);
             });
             
-            fileContainer.appendChild(fileGrid);
+            fileContainer.appendChild(fileList);
             
         } else {
             // Show empty state
@@ -345,17 +569,14 @@ async function listS3Files() {
 // Enhanced downloadFile function for modern UI
 async function downloadFile(fullKey, displayName, index) {
     const idToken = localStorage.getItem('id_token');
-    const statusDiv = document.getElementById(`status-${index}`);
     
     if (!idToken) {
-        showStatus(statusDiv, 'You must be logged in to download files.', 'error');
+        alert('You must be logged in to download files.');
         return;
     }
     
     try {
         console.log(`Requesting download URL for: ${fullKey}`);
-        
-        showStatus(statusDiv, 'Generating secure download link...', 'loading');
         
         const encodedKey = encodeURIComponent(fullKey);
         const response = await fetch(`/api/s3/download/${encodedKey}`, {
@@ -374,8 +595,6 @@ async function downloadFile(fullKey, displayName, index) {
         
         const downloadData = await response.json();
         
-        showStatus(statusDiv, 'Starting download...', 'loading');
-        
         // Create and trigger download
         const downloadLink = document.createElement('a');
         downloadLink.href = downloadData.downloadUrl;
@@ -386,16 +605,11 @@ async function downloadFile(fullKey, displayName, index) {
         downloadLink.click();
         document.body.removeChild(downloadLink);
         
-        showStatus(statusDiv, `Downloaded successfully! ✓`, 'success');
-        
-        // Clear status after 3 seconds
-        setTimeout(() => {
-            statusDiv.classList.remove('show');
-        }, 3000);
+        console.log('Download started successfully');
         
     } catch (error) {
         console.error('Error downloading file:', error);
-        showStatus(statusDiv, `Download failed: ${error.message}`, 'error');
+        alert(`Download failed: ${error.message}`);
     }
 }
 
@@ -413,35 +627,6 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-function getFileIcon(filename) {
-    const ext = filename.split('.').pop().toLowerCase();
-    const iconMap = {
-        'pdf': 'fas fa-file-pdf',
-        'doc': 'fas fa-file-word',
-        'docx': 'fas fa-file-word',
-        'xls': 'fas fa-file-excel',
-        'xlsx': 'fas fa-file-excel',
-        'ppt': 'fas fa-file-powerpoint',
-        'pptx': 'fas fa-file-powerpoint',
-        'jpg': 'fas fa-file-image',
-        'jpeg': 'fas fa-file-image',
-        'png': 'fas fa-file-image',
-        'gif': 'fas fa-file-image',
-        'mp4': 'fas fa-file-video',
-        'avi': 'fas fa-file-video',
-        'mp3': 'fas fa-file-audio',
-        'wav': 'fas fa-file-audio',
-        'zip': 'fas fa-file-archive',
-        'rar': 'fas fa-file-archive',
-        'txt': 'fas fa-file-alt',
-        'js': 'fas fa-file-code',
-        'html': 'fas fa-file-code',
-        'css': 'fas fa-file-code',
-        'json': 'fas fa-file-code'
-    };
-    
-    return iconMap[ext] || 'fas fa-file';
-}
 
 
 // Memory browsing functions - Add these to your app.js.template
@@ -902,7 +1087,7 @@ async function uploadFile(item, index) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                fileName: item.name,
+                fileName: currentPath + item.name,
                 contentType: item.type,
                 fileSize: item.size
             })
@@ -946,9 +1131,190 @@ async function uploadFile(item, index) {
     }
 }
 
-// Initialize upload when document is ready
+// Folder creation functionality
+function initializeFolderCreation() {
+    const newFolderButton = document.getElementById('new-folder-button');
+    const folderModal = document.getElementById('folder-modal');
+    const closeFolderBtn = document.getElementById('close-folder');
+    const cancelFolderBtn = document.getElementById('cancel-folder');
+    const createFolderBtn = document.getElementById('create-folder');
+    const folderNameInput = document.getElementById('folder-name');
+    
+    // Open folder modal
+    newFolderButton?.addEventListener('click', () => {
+        folderModal.style.display = 'flex';
+        folderNameInput.value = '';
+        folderNameInput.focus();
+    });
+    
+    // Close folder modal
+    const closeFolderModal = () => {
+        folderModal.style.display = 'none';
+        folderNameInput.value = '';
+    };
+    
+    closeFolderBtn?.addEventListener('click', closeFolderModal);
+    cancelFolderBtn?.addEventListener('click', closeFolderModal);
+    
+    // Close modal when clicking outside
+    folderModal?.addEventListener('click', (e) => {
+        if (e.target === folderModal) {
+            closeFolderModal();
+        }
+    });
+    
+    // Handle Enter key in input
+    folderNameInput?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            createFolder();
+        }
+    });
+    
+    // Create folder button
+    createFolderBtn?.addEventListener('click', createFolder);
+}
+
+async function createFolder() {
+    const folderNameInput = document.getElementById('folder-name');
+    const folderName = folderNameInput.value.trim();
+    
+    if (!folderName) {
+        alert('Please enter a folder name');
+        return;
+    }
+    
+    // Sanitize folder name
+    const sanitizedName = folderName.replace(/[^a-zA-Z0-9\-_\s]/g, '').trim();
+    if (!sanitizedName) {
+        alert('Please enter a valid folder name (letters, numbers, spaces, hyphens, underscores only)');
+        return;
+    }
+    
+    const idToken = localStorage.getItem('id_token');
+    if (!idToken) {
+        alert('You must be logged in to create folders');
+        return;
+    }
+    
+    try {
+        // Show loading state
+        const createBtn = document.getElementById('create-folder');
+        createBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
+        createBtn.disabled = true;
+        
+        // Create folder by uploading a small marker file
+        const folderPath = currentPath + sanitizedName + '/';
+        const markerFileName = folderPath + '.folder';
+        
+        // Get upload URL for marker file
+        const response = await fetch('/api/s3/upload', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                fileName: markerFileName,
+                contentType: 'text/plain',
+                fileSize: 1
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to get upload URL: ${response.status}`);
+        }
+        
+        const uploadData = await response.json();
+        
+        // Upload tiny marker file to create the folder
+        const uploadResponse = await fetch(uploadData.uploadUrl, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'text/plain'
+            },
+            body: ' ' // Single space character
+        });
+        
+        if (!uploadResponse.ok) {
+            throw new Error(`Failed to create folder: ${uploadResponse.status}`);
+        }
+        
+        console.log('Folder created successfully:', folderPath);
+        
+        // Close modal
+        document.getElementById('folder-modal').style.display = 'none';
+        folderNameInput.value = '';
+        
+        // Refresh file list
+        setTimeout(() => {
+            listS3Files();
+        }, 500);
+        
+    } catch (error) {
+        console.error('Error creating folder:', error);
+        alert(`Failed to create folder: ${error.message}`);
+    } finally {
+        // Reset button
+        const createBtn = document.getElementById('create-folder');
+        createBtn.innerHTML = '<i class="fas fa-folder-plus"></i> Create Folder';
+        createBtn.disabled = false;
+    }
+}
+
+// Delete file or folder functionality
+async function deleteFile(fileKey, displayName, isFolder = false) {
+    // Confirm deletion
+    const itemType = isFolder ? 'folder' : 'file';
+    const confirmMessage = isFolder 
+        ? `Are you sure you want to delete the folder "${displayName}" and all its contents?`
+        : `Are you sure you want to delete "${displayName}"?`;
+        
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    const idToken = localStorage.getItem('id_token');
+    if (!idToken) {
+        alert('You must be logged in to delete files');
+        return;
+    }
+    
+    try {
+        console.log(`Deleting ${itemType}: ${fileKey}`);
+        
+        const encodedKey = encodeURIComponent(fileKey);
+        const response = await fetch(`/api/s3/delete/${encodedKey}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Delete failed: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('Delete successful:', result);
+        
+        // If deleting a folder, we might need to handle multiple files
+        // For now, we'll just refresh the list
+        setTimeout(() => {
+            listS3Files();
+        }, 300);
+        
+    } catch (error) {
+        console.error('Error deleting file:', error);
+        alert(`Failed to delete ${itemType}: ${error.message}`);
+    }
+}
+
+// Initialize upload and folder creation when document is ready
 document.addEventListener('DOMContentLoaded', () => {
     initializeUpload();
+    initializeFolderCreation();
 });
 
 

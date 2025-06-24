@@ -279,8 +279,8 @@ module.exports.getUploadUrl = async (event) => {
       };
     }
 
-    // Sanitize filename - remove any path traversal attempts
-    const sanitizedFileName = fileName.split('/').pop().split('\\').pop();
+    // Allow folder paths but prevent path traversal (../)
+    const sanitizedFileName = fileName.replace(/\.\.\//g, '').replace(/\.\.\\/g, '');
     
     // Create the S3 key for the user's file
     const fileKey = `users/${userId}/${sanitizedFileName}`;
@@ -317,6 +317,98 @@ module.exports.getUploadUrl = async (event) => {
     };
   } catch (error) {
     console.error('Error generating upload URL:', error);
+    return {
+      statusCode: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': true,
+      },
+      body: JSON.stringify({ 
+        error: error.message,
+        timestamp: new Date().toISOString()
+      }),
+    };
+  }
+};
+
+// New function for deleting files
+module.exports.deleteObject = async (event) => {
+  try {
+    // Get user claims from the authorizer
+    const claims = event.requestContext?.authorizer?.claims || {};
+    const email = claims.email || 'Anonymous';
+    const userId = claims.sub || 'unknown';
+    
+    console.log(`User ${email} (${userId}) requesting file deletion`);
+
+    // Get bucket name from environment variable
+    const bucketName = process.env.S3_BUCKET_NAME;
+    if (!bucketName) {
+      throw new Error('S3_BUCKET_NAME environment variable not set');
+    }
+
+    // Get the file key from path parameters or body
+    let fileKey = event.pathParameters?.key;
+    if (!fileKey && event.body) {
+      const body = JSON.parse(event.body);
+      fileKey = body.fileKey;
+    }
+    
+    if (!fileKey) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ error: 'File key is required' }),
+      };
+    }
+
+    // Decode the file key (in case it was URL encoded)
+    const decodedKey = decodeURIComponent(fileKey);
+    
+    // Security check: only allow deletion of user's own files
+    const userPrefix = `users/${userId}/`;
+    if (!decodedKey.startsWith(userPrefix)) {
+      return {
+        statusCode: 403,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ 
+          error: 'Access denied: You can only delete your own files' 
+        }),
+      };
+    }
+
+    console.log(`Deleting S3 object: ${decodedKey}`);
+
+    // Delete the object from S3
+    await s3.deleteObject({
+      Bucket: bucketName,
+      Key: decodedKey
+    }).promise();
+
+    console.log(`Successfully deleted: ${decodedKey}`);
+
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': true,
+      },
+      body: JSON.stringify({
+        message: 'File deleted successfully',
+        user: email,
+        userId: userId,
+        deletedFile: decodedKey,
+        timestamp: new Date().toISOString()
+      }),
+    };
+  } catch (error) {
+    console.error('Error deleting file:', error);
     return {
       statusCode: 500,
       headers: {

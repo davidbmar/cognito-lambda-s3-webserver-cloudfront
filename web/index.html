@@ -292,10 +292,31 @@
             gap: 0.5rem;
             margin-bottom: 1rem;
             color: #666;
+            flex-wrap: wrap;
         }
 
         .breadcrumb i {
             color: #667eea;
+        }
+
+        .breadcrumb-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .breadcrumb-item:hover {
+            background: #f8f9fa;
+            color: #667eea;
+        }
+
+        .breadcrumb-separator {
+            color: #dee2e6;
+            margin: 0 0.25rem;
         }
 
         @media (max-width: 768px) {
@@ -340,6 +361,87 @@
             to {
                 opacity: 1;
                 transform: translateY(0);
+            }
+        }
+
+        /* List View Styles */
+        .file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .file-list-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .file-list-item:hover {
+            background: #f8f9fa;
+            border-color: #667eea;
+            transform: translateX(5px);
+        }
+
+        .file-list-icon {
+            font-size: 1.8rem;
+            width: 40px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .file-list-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .file-list-name {
+            font-weight: 600;
+            font-size: 1rem;
+            color: #333;
+            margin-bottom: 0.25rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-list-meta {
+            font-size: 0.85rem;
+            color: #666;
+            display: flex;
+            gap: 1rem;
+        }
+
+        .file-list-actions {
+            display: flex;
+            gap: 0.5rem;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .file-list-item:hover .file-list-actions {
+            opacity: 1;
+        }
+
+        /* Mobile responsive list */
+        @media (max-width: 768px) {
+            .file-list-item {
+                padding: 0.75rem;
+            }
+            
+            .file-list-actions {
+                opacity: 1;
+            }
+            
+            .file-list-meta {
+                flex-direction: column;
+                gap: 0.25rem;
             }
         }
 
@@ -556,9 +658,11 @@
             <div id="authenticated-section" class="file-manager" style="display: none;">
                 <div class="file-manager-header">
                     <div>
-                        <div class="breadcrumb">
-                            <i class="fas fa-home"></i>
-                            <span>My Files</span>
+                        <div class="breadcrumb" id="breadcrumb-nav">
+                            <div class="breadcrumb-item" onclick="navigateToFolder('')">
+                                <i class="fas fa-home"></i>
+                                <span>My Files</span>
+                            </div>
                         </div>
                         <h2>File Manager</h2>
                     </div>
@@ -566,6 +670,10 @@
                         <button class="btn btn-primary" id="upload-button">
                             <i class="fas fa-upload"></i>
                             Upload Files
+                        </button>
+                        <button class="btn btn-secondary" id="new-folder-button">
+                            <i class="fas fa-folder-plus"></i>
+                            New Folder
                         </button>
                         <button class="btn btn-primary" id="refresh-files">
                             <i class="fas fa-sync-alt"></i>
@@ -613,6 +721,28 @@
                                 <button class="btn btn-secondary" id="clear-queue">
                                     <i class="fas fa-times"></i>
                                     Clear All
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- New Folder Modal -->
+                <div id="folder-modal" class="upload-modal" style="display: none;">
+                    <div class="upload-modal-content" style="max-width: 400px;">
+                        <div class="upload-modal-header">
+                            <h3>Create New Folder</h3>
+                            <button class="close-modal" id="close-folder">&times;</button>
+                        </div>
+                        <div style="padding: 1.5rem;">
+                            <label for="folder-name" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Folder Name:</label>
+                            <input type="text" id="folder-name" placeholder="Enter folder name..." 
+                                   style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; margin-bottom: 1rem;">
+                            <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                                <button class="btn btn-secondary" id="cancel-folder">Cancel</button>
+                                <button class="btn btn-primary" id="create-folder">
+                                    <i class="fas fa-folder-plus"></i>
+                                    Create Folder
                                 </button>
                             </div>
                         </div>
