@@ -4,13 +4,13 @@
 
 // Configuration - to be updated after deployment
 const config = {
-    userPoolId: 'YOUR_USER_POOL_ID',
-    userPoolClientId: 'YOUR_USER_POOL_CLIENT_ID',
-    identityPoolId: 'YOUR_IDENTITY_POOL_ID',
+    userPoolId: 'us-east-2_OL0lQO7Fg',
+    userPoolClientId: '6st8df0k5ir59tkh0jlb8jfo7k',
+    identityPoolId: 'us-east-2:b773c1a4-1019-4b8c-9d75-57e447365168',
     region: 'us-east-2', // Your AWS region
-    apiUrl: 'YOUR_CLOUDFRONT_API_ENDPOINT', // CloudFront API endpoint
-    s3ApiUrl: 'YOUR_CLOUDFRONT_S3_API_ENDPOINT', // CloudFront S3 API endpoint
-    appUrl: 'YOUR_APP_URL'
+    apiUrl: 'https://d2lnlqioej6my1.cloudfront.net/api/data', // CloudFront API endpoint
+    s3ApiUrl: 'https://d2lnlqioej6my1.cloudfront.net/api/s3/list', // CloudFront S3 API endpoint
+    appUrl: 'https://d2lnlqioej6my1.cloudfront.net'
 };
 
 // DOM elements
@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function login() {
     console.log("Login function called");
     // The domain prefix will be replaced during deployment
-    const authUrl = 'https://YOUR_COGNITO_DOMAIN_PREFIX.auth.us-east-2.amazoncognito.com/login';
+    const authUrl = 'https://dbmdbm-cloudfront-app-1750789604.auth.us-east-2.amazoncognito.com/login';
     const redirectUri = `${config.appUrl}/callback.html`;
     
     const queryParams = new URLSearchParams({
@@ -420,7 +420,7 @@ async function listS3Files() {
             </div>
         `;
         
-        const response = await fetch('/api/s3/list?prefix=', {
+        const response = await fetch(`${config.appUrl}/api/s3/list?prefix=`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${idToken}`,
@@ -462,7 +462,7 @@ async function listS3Files() {
                         <i class="${fileTypeInfo.icon}" style="color: ${fileTypeInfo.color};"></i>
                     </div>
                     <div class="file-list-info">
-                        <div class="file-list-name">${displayName}</div>
+                        <div class="file-list-name" title="${displayName}">${displayName}</div>
                         <div class="file-list-meta">
                             ${isFolder ? 
                                 '<span><i class="fas fa-folder-open"></i> Folder</span>' : 
@@ -472,63 +472,109 @@ async function listS3Files() {
                         </div>
                     </div>
                     <div class="file-list-actions">
-                        ${isFolder ? 
-                            `<button class="btn btn-secondary btn-sm open-btn">
-                                <i class="fas fa-folder-open"></i>
-                                Open
-                            </button>
-                            <button class="btn btn-danger btn-sm delete-btn" data-key="${fullKey}" data-name="${displayName}" data-folder="true">
-                                <i class="fas fa-trash"></i>
-                                Delete
-                            </button>` :
-                            `<button class="btn btn-primary btn-sm download-btn" data-key="${fullKey}" data-name="${displayName}">
-                                <i class="fas fa-download"></i>
-                                Download
-                            </button>
-                            <button class="btn btn-danger btn-sm delete-btn" data-key="${fullKey}" data-name="${displayName}">
-                                <i class="fas fa-trash"></i>
-                                Delete
-                            </button>`
-                        }
+                        <button class="menu-btn" data-key="${fullKey}" data-name="${displayName}" data-folder="${isFolder}" aria-label="More actions">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                        <div class="dropdown-menu">
+                            ${isFolder ? 
+                                `<button class="dropdown-item open-btn" data-key="${fullKey}">
+                                    <i class="fas fa-folder-open"></i>
+                                    <span>Open</span>
+                                </button>
+                                <button class="dropdown-item rename-btn" data-key="${fullKey}" data-name="${displayName}">
+                                    <i class="fas fa-edit"></i>
+                                    <span>Rename</span>
+                                </button>
+                                <button class="dropdown-item move-btn" data-key="${fullKey}" data-name="${displayName}">
+                                    <i class="fas fa-arrows-alt"></i>
+                                    <span>Move</span>
+                                </button>
+                                <div class="dropdown-divider"></div>
+                                <button class="dropdown-item danger delete-btn" data-key="${fullKey}" data-name="${displayName}" data-folder="true">
+                                    <i class="fas fa-trash"></i>
+                                    <span>Delete</span>
+                                </button>` :
+                                `<button class="dropdown-item download-btn" data-key="${fullKey}" data-name="${displayName}">
+                                    <i class="fas fa-download"></i>
+                                    <span>Download</span>
+                                </button>
+                                <button class="dropdown-item rename-btn" data-key="${fullKey}" data-name="${displayName}">
+                                    <i class="fas fa-edit"></i>
+                                    <span>Rename</span>
+                                </button>
+                                <button class="dropdown-item move-btn" data-key="${fullKey}" data-name="${displayName}">
+                                    <i class="fas fa-arrows-alt"></i>
+                                    <span>Move</span>
+                                </button>
+                                <div class="dropdown-divider"></div>
+                                <button class="dropdown-item danger delete-btn" data-key="${fullKey}" data-name="${displayName}">
+                                    <i class="fas fa-trash"></i>
+                                    <span>Delete</span>
+                                </button>`
+                            }
+                        </div>
                     </div>
                 `;
                 
-                // Add delete event listener for both files and folders
+                // Add menu button event listener
+                const menuBtn = fileItem.querySelector('.menu-btn');
+                const dropdownMenu = fileItem.querySelector('.dropdown-menu');
+                
+                menuBtn?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    closeAllDropdowns();
+                    dropdownMenu.classList.toggle('show');
+                });
+                
+                // Add event listeners for dropdown items
                 const deleteBtn = fileItem.querySelector('.delete-btn');
+                const renameBtn = fileItem.querySelector('.rename-btn');
+                const moveBtn = fileItem.querySelector('.move-btn');
+                const downloadBtn = fileItem.querySelector('.download-btn');
+                const openBtn = fileItem.querySelector('.open-btn');
+                
                 deleteBtn?.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    dropdownMenu.classList.remove('show');
                     deleteFile(fullKey, displayName, isFolder);
                 });
                 
-                if (isFolder) {
-                    // Add folder navigation
-                    const openBtn = fileItem.querySelector('.open-btn');
-                    openBtn?.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        navigateToFolder(fullKey);
-                    });
+                renameBtn?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dropdownMenu.classList.remove('show');
+                    renameFile(fullKey, displayName, isFolder);
+                });
+                
+                moveBtn?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dropdownMenu.classList.remove('show');
+                    moveFile(fullKey, displayName, isFolder);
+                });
+                
+                downloadBtn?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dropdownMenu.classList.remove('show');
+                    downloadFile(fullKey, displayName, index);
+                });
+                
+                openBtn?.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dropdownMenu.classList.remove('show');
+                    navigateToFolder(fullKey);
+                });
+                
+                // Add click handler for row click (mobile/desktop friendly)
+                fileItem.addEventListener('click', (e) => {
+                    // Don't trigger if clicking on menu button or dropdown
+                    if (e.target.closest('.file-list-actions')) return;
                     
-                    // Add click handler to navigate on row click (mobile friendly)
-                    fileItem.addEventListener('click', (e) => {
-                        // Don't navigate if clicking on buttons
-                        if (e.target.closest('button')) return;
+                    if (isFolder) {
                         navigateToFolder(fullKey);
-                    });
-                } else {
-                    // Add download event listener
-                    const downloadBtn = fileItem.querySelector('.download-btn');
-                    downloadBtn?.addEventListener('click', (e) => {
-                        e.stopPropagation();
+                    } else {
+                        // For files, show a preview or download on click
                         downloadFile(fullKey, displayName, index);
-                    });
-                    
-                    // Add click handler to download on row click (mobile friendly)
-                    fileItem.addEventListener('click', (e) => {
-                        // Don't download if clicking on buttons
-                        if (e.target.closest('button')) return;
-                        downloadFile(fullKey, displayName, index);
-                    });
-                }
+                    }
+                });
                 
                 fileList.appendChild(fileItem);
             });
@@ -579,7 +625,7 @@ async function downloadFile(fullKey, displayName, index) {
         console.log(`Requesting download URL for: ${fullKey}`);
         
         const encodedKey = encodeURIComponent(fullKey);
-        const response = await fetch(`/api/s3/download/${encodedKey}`, {
+        const response = await fetch(`${config.appUrl}/api/s3/download/${encodedKey}`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${idToken}`,
@@ -701,7 +747,7 @@ async function loadMemoryFiles(scope = 'public') {
         }
         
         // Use the S3 list API with custom prefix and no user scoping
-        const response = await fetch(`/api/s3/list?prefix=${encodeURIComponent(prefix)}&userScope=false`, {
+        const response = await fetch(`${config.appUrl}/api/s3/list?prefix=${encodeURIComponent(prefix)}&userScope=false`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${idToken}`,
@@ -815,7 +861,7 @@ async function displayMemoryFile(file) {
     // Load and display memory content
     try {
         const encodedKey = encodeURIComponent(file.key);
-        const response = await fetch(`/api/s3/download/${encodedKey}`, {
+        const response = await fetch(`${config.appUrl}/api/s3/download/${encodedKey}`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${idToken}`,
@@ -868,7 +914,7 @@ async function downloadMemoryFile(fileKey) {
     
     try {
         const encodedKey = encodeURIComponent(fileKey);
-        const response = await fetch(`/api/s3/download/${encodedKey}`, {
+        const response = await fetch(`${config.appUrl}/api/s3/download/${encodedKey}`, {
             method: 'GET',
             headers: {
                 'Authorization': `Bearer ${idToken}`,
@@ -1080,7 +1126,7 @@ async function uploadFile(item, index) {
         updateUploadQueue();
         
         // Get presigned URL
-        const response = await fetch(`/api/s3/upload`, {
+        const response = await fetch(`${config.appUrl}/api/s3/upload`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${idToken}`,
@@ -1207,7 +1253,7 @@ async function createFolder() {
         const markerFileName = folderPath + '.folder';
         
         // Get upload URL for marker file
-        const response = await fetch('/api/s3/upload', {
+        const response = await fetch(`${config.appUrl}/api/s3/upload`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${idToken}`,
@@ -1283,7 +1329,7 @@ async function deleteFile(fileKey, displayName, isFolder = false) {
         console.log(`Deleting ${itemType}: ${fileKey}`);
         
         const encodedKey = encodeURIComponent(fileKey);
-        const response = await fetch(`/api/s3/delete/${encodedKey}`, {
+        const response = await fetch(`${config.appUrl}/api/s3/delete/${encodedKey}`, {
             method: 'DELETE',
             headers: {
                 'Authorization': `Bearer ${idToken}`,
@@ -1309,6 +1355,196 @@ async function deleteFile(fileKey, displayName, isFolder = false) {
         console.error('Error deleting file:', error);
         alert(`Failed to delete ${itemType}: ${error.message}`);
     }
+}
+
+// Close all dropdown menus
+function closeAllDropdowns() {
+    document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
+        menu.classList.remove('show');
+    });
+}
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.file-list-actions')) {
+        closeAllDropdowns();
+    }
+});
+
+// Rename file or folder with better UX
+async function renameFile(fileKey, oldName, isFolder) {
+    // Create modal for rename
+    const modal = document.createElement('div');
+    modal.className = 'upload-modal';
+    modal.innerHTML = `
+        <div class="upload-modal-content" style="max-width: 400px;">
+            <div class="upload-modal-header">
+                <h3>Rename ${isFolder ? 'folder' : 'file'}</h3>
+                <button class="close-modal" id="close-rename">&times;</button>
+            </div>
+            <div style="padding: 1.5rem;">
+                <label for="rename-input" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">New name:</label>
+                <input type="text" id="rename-input" value="${oldName}" 
+                       style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; margin-bottom: 1rem;">
+                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                    <button class="btn btn-secondary" id="cancel-rename">Cancel</button>
+                    <button class="btn btn-primary" id="confirm-rename">
+                        <i class="fas fa-edit"></i>
+                        Rename
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    modal.style.display = 'flex';
+    
+    const input = modal.querySelector('#rename-input');
+    const closeBtn = modal.querySelector('#close-rename');
+    const cancelBtn = modal.querySelector('#cancel-rename');
+    const confirmBtn = modal.querySelector('#confirm-rename');
+    
+    // Focus and select text
+    input.focus();
+    input.select();
+    
+    const closeModal = () => {
+        document.body.removeChild(modal);
+    };
+    
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    
+    // Handle enter key
+    input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            confirmBtn.click();
+        }
+    });
+    
+    confirmBtn.addEventListener('click', async () => {
+        const newName = input.value.trim();
+        
+        if (!newName || newName === oldName) {
+            closeModal();
+            return;
+        }
+        
+        // Sanitize new name
+        const sanitizedName = newName.replace(/[^a-zA-Z0-9\-_\s\.]/g, '').trim();
+        if (!sanitizedName) {
+            alert('Please enter a valid name (letters, numbers, spaces, hyphens, underscores, and dots only)');
+            return;
+        }
+        
+        closeModal();
+        
+        // Show notification that this feature needs implementation
+        showNotification('Rename feature coming soon! This will copy the file with a new name and delete the original.', 'info');
+    });
+}
+
+// Move file or folder with folder picker
+async function moveFile(fileKey, fileName, isFolder) {
+    // Create modal for move
+    const modal = document.createElement('div');
+    modal.className = 'upload-modal';
+    modal.innerHTML = `
+        <div class="upload-modal-content" style="max-width: 500px;">
+            <div class="upload-modal-header">
+                <h3>Move "${fileName}"</h3>
+                <button class="close-modal" id="close-move">&times;</button>
+            </div>
+            <div style="padding: 1.5rem;">
+                <label for="destination-input" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Destination folder:</label>
+                <input type="text" id="destination-input" placeholder="Leave empty for root folder" 
+                       style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; margin-bottom: 1rem;">
+                <div style="font-size: 0.875rem; color: #666; margin-bottom: 1rem;">
+                    <i class="fas fa-info-circle"></i>
+                    Enter the folder path where you want to move this ${isFolder ? 'folder' : 'file'}
+                </div>
+                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                    <button class="btn btn-secondary" id="cancel-move">Cancel</button>
+                    <button class="btn btn-primary" id="confirm-move">
+                        <i class="fas fa-arrows-alt"></i>
+                        Move
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    modal.style.display = 'flex';
+    
+    const input = modal.querySelector('#destination-input');
+    const closeBtn = modal.querySelector('#close-move');
+    const cancelBtn = modal.querySelector('#cancel-move');
+    const confirmBtn = modal.querySelector('#confirm-move');
+    
+    input.focus();
+    
+    const closeModal = () => {
+        document.body.removeChild(modal);
+    };
+    
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    
+    confirmBtn.addEventListener('click', async () => {
+        const destination = input.value.trim();
+        
+        closeModal();
+        
+        // Show notification that this feature needs implementation
+        showNotification('Move feature coming soon! This will copy the file to the new location and delete the original.', 'info');
+    });
+}
+
+// Show notification function
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: ${type === 'info' ? '#4285f4' : '#34a853'};
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        z-index: 10000;
+        font-size: 14px;
+        max-width: 300px;
+        animation: slideIn 0.3s ease;
+    `;
+    
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    // Add CSS animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    `;
+    document.head.appendChild(style);
+    
+    // Remove after 4 seconds
+    setTimeout(() => {
+        notification.style.animation = 'slideIn 0.3s ease reverse';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                document.body.removeChild(notification);
+            }
+            if (style.parentNode) {
+                document.head.removeChild(style);
+            }
+        }, 300);
+    }, 4000);
 }
 
 // Initialize upload and folder creation when document is ready
