@@ -536,17 +536,18 @@ async function listS3Files() {
                         // Add class to parent for z-index fix (fallback for browsers without :has())
                         fileItem.classList.add('dropdown-open');
                         
-                        // Check if we're on mobile (screen width <= 768px)
-                        const isMobile = window.innerWidth <= 768;
+                        // Check if we're on mobile - more comprehensive detection
+                        const isMobile = window.innerWidth <= 768 || 
+                                       /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+                                       ('ontouchstart' in window);
                         
                         if (isMobile) {
-                            // For mobile, use modal-style dropdown
-                            dropdownMenu.classList.add('mobile-modal');
-                            const backdrop = document.getElementById('mobile-dropdown-backdrop');
-                            if (backdrop) {
-                                backdrop.classList.add('show');
-                                backdrop.addEventListener('click', closeAllDropdowns);
-                            }
+                            // For mobile, create a completely separate action sheet
+                            console.log('Mobile detected - creating action sheet');
+                            e.preventDefault();
+                            e.stopPropagation();
+                            dropdownMenu.classList.remove('show'); // Hide the regular dropdown
+                            showMobileActionSheet(fullKey, displayName, isFolder, index);
                         } else {
                             // Desktop behavior - check if dropdown would go off-screen and flip if needed
                             setTimeout(() => {
@@ -1863,6 +1864,208 @@ function showNotification(message, type = 'info') {
             }
         }, 300);
     }, 4000);
+}
+
+// Mobile action sheet function
+function showMobileActionSheet(fileKey, fileName, isFolder, index) {
+    console.log('Creating mobile action sheet for:', fileName);
+    
+    // Remove any existing action sheet
+    const existingSheet = document.getElementById('mobile-action-sheet');
+    if (existingSheet) {
+        document.body.removeChild(existingSheet);
+    }
+    
+    // Create action sheet
+    const actionSheet = document.createElement('div');
+    actionSheet.id = 'mobile-action-sheet';
+    actionSheet.innerHTML = `
+        <div class="mobile-action-backdrop"></div>
+        <div class="mobile-action-content">
+            <div class="mobile-action-header">
+                <h3>${fileName}</h3>
+                <button class="mobile-action-close">&times;</button>
+            </div>
+            <div class="mobile-action-buttons">
+                ${isFolder ? 
+                    `<button class="mobile-action-btn" data-action="open">
+                        <i class="fas fa-folder-open"></i>
+                        <span>Open</span>
+                    </button>
+                    <button class="mobile-action-btn" data-action="rename">
+                        <i class="fas fa-edit"></i>
+                        <span>Rename</span>
+                    </button>
+                    <button class="mobile-action-btn" data-action="move">
+                        <i class="fas fa-arrows-alt"></i>
+                        <span>Move</span>
+                    </button>
+                    <button class="mobile-action-btn danger" data-action="delete">
+                        <i class="fas fa-trash"></i>
+                        <span>Delete</span>
+                    </button>` :
+                    `<button class="mobile-action-btn" data-action="download">
+                        <i class="fas fa-download"></i>
+                        <span>Download</span>
+                    </button>
+                    <button class="mobile-action-btn" data-action="rename">
+                        <i class="fas fa-edit"></i>
+                        <span>Rename</span>
+                    </button>
+                    <button class="mobile-action-btn" data-action="move">
+                        <i class="fas fa-arrows-alt"></i>
+                        <span>Move</span>
+                    </button>
+                    <button class="mobile-action-btn danger" data-action="delete">
+                        <i class="fas fa-trash"></i>
+                        <span>Delete</span>
+                    </button>`
+                }
+            </div>
+        </div>
+    `;
+    
+    // Add CSS styles
+    actionSheet.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 99999;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    `;
+    
+    document.body.appendChild(actionSheet);
+    
+    // Style the elements
+    const backdrop = actionSheet.querySelector('.mobile-action-backdrop');
+    backdrop.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.4);
+    `;
+    
+    const content = actionSheet.querySelector('.mobile-action-content');
+    content.style.cssText = `
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        border-radius: 16px 16px 0 0;
+        padding: 0;
+        transform: translateY(100%);
+        transition: transform 0.3s ease;
+        max-height: 50vh;
+        overflow-y: auto;
+    `;
+    
+    const header = actionSheet.querySelector('.mobile-action-header');
+    header.style.cssText = `
+        padding: 16px 20px;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    `;
+    
+    const closeBtn = actionSheet.querySelector('.mobile-action-close');
+    closeBtn.style.cssText = `
+        background: none;
+        border: none;
+        font-size: 24px;
+        padding: 4px;
+        color: #666;
+        cursor: pointer;
+    `;
+    
+    const buttons = actionSheet.querySelector('.mobile-action-buttons');
+    buttons.style.cssText = `
+        padding: 8px 0;
+        padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    `;
+    
+    // Style individual buttons
+    actionSheet.querySelectorAll('.mobile-action-btn').forEach(btn => {
+        btn.style.cssText = `
+            width: 100%;
+            padding: 16px 20px;
+            border: none;
+            background: none;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        `;
+        
+        if (btn.classList.contains('danger')) {
+            btn.style.color = '#dc3545';
+        }
+        
+        btn.addEventListener('mousedown', () => {
+            btn.style.backgroundColor = '#f0f0f0';
+        });
+        
+        btn.addEventListener('mouseup', () => {
+            btn.style.backgroundColor = 'transparent';
+        });
+    });
+    
+    // Show the action sheet
+    setTimeout(() => {
+        actionSheet.style.opacity = '1';
+        content.style.transform = 'translateY(0)';
+    }, 10);
+    
+    // Close function
+    const closeActionSheet = () => {
+        content.style.transform = 'translateY(100%)';
+        actionSheet.style.opacity = '0';
+        setTimeout(() => {
+            if (document.body.contains(actionSheet)) {
+                document.body.removeChild(actionSheet);
+            }
+        }, 300);
+    };
+    
+    // Event listeners
+    backdrop.addEventListener('click', closeActionSheet);
+    closeBtn.addEventListener('click', closeActionSheet);
+    
+    // Action button listeners
+    actionSheet.querySelectorAll('.mobile-action-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const action = btn.getAttribute('data-action');
+            closeActionSheet();
+            
+            setTimeout(() => {
+                switch (action) {
+                    case 'open':
+                        navigateToFolder(fileKey);
+                        break;
+                    case 'download':
+                        downloadFile(fileKey, fileName, index);
+                        break;
+                    case 'rename':
+                        renameFile(fileKey, fileName, isFolder);
+                        break;
+                    case 'move':
+                        moveFile(fileKey, fileName, isFolder);
+                        break;
+                    case 'delete':
+                        deleteFile(fileKey, fileName, isFolder);
+                        break;
+                }
+            }, 100);
+        });
+    });
 }
 
 // Initialize upload and folder creation when document is ready
