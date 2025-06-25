@@ -1570,8 +1570,12 @@ function buildFolderTree(files) {
         
         // Remove user prefix for clean paths
         let cleanPath = file.key;
-        if (cleanPath.includes('/users/')) {
-            cleanPath = cleanPath.split('/').slice(2).join('/'); // Remove users/userId/
+        if (cleanPath.startsWith('users/')) {
+            // Remove users/userId/ prefix completely
+            const pathParts = cleanPath.split('/');
+            if (pathParts.length >= 2) {
+                cleanPath = pathParts.slice(2).join('/'); // Remove "users" and the userId
+            }
         }
         
         // Skip files, only process folders
@@ -1788,7 +1792,11 @@ async function executeMoveOperation(sourceKey, fileName, destinationPath, isFold
     const idToken = localStorage.getItem('id_token');
     
     try {
-        console.log(`Moving ${sourceKey} to ${destinationPath}`);
+        console.log(`Moving ${sourceKey} to destination: "${destinationPath}"`);
+        console.log('Move request body:', {
+            sourceKey: sourceKey,
+            destinationPath: destinationPath
+        });
         
         const response = await fetch(`${config.appUrl}/api/s3/move`, {
             method: 'POST',
@@ -1803,8 +1811,17 @@ async function executeMoveOperation(sourceKey, fileName, destinationPath, isFold
         });
         
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Move failed: ${response.status}`);
+            console.log('Move response status:', response.status);
+            console.log('Move response headers:', response.headers);
+            const responseText = await response.text();
+            console.log('Move response text:', responseText);
+            
+            try {
+                const errorData = JSON.parse(responseText);
+                throw new Error(errorData.error || `Move failed: ${response.status}`);
+            } catch (parseError) {
+                throw new Error(`Move failed: ${response.status}. Response: ${responseText.substring(0, 200)}...`);
+            }
         }
         
         const result = await response.json();
