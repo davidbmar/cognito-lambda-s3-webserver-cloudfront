@@ -59,6 +59,13 @@ provider:
         - Effect: Allow
           Action:
             - s3:DeleteObject
+            - s3:DeleteObjects
+          Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/users/*"
+        
+        # S3 copy permissions for rename operations
+        - Effect: Allow
+          Action:
+            - s3:CopyObject
           Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/users/*"
 
 custom:
@@ -144,6 +151,36 @@ functions:
             parameters:
               paths:
                 key: true
+
+  # S3 rename function
+  renameS3Object:
+    handler: api/s3.renameObject
+    environment:
+      S3_BUCKET_NAME: ${self:custom.s3Bucket}
+    events:
+      - http:
+          path: api/s3/rename
+          method: post
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+
+  # S3 move function
+  moveS3Object:
+    handler: api/s3.moveObject
+    environment:
+      S3_BUCKET_NAME: ${self:custom.s3Bucket}
+    events:
+      - http:
+          path: api/s3/move
+          method: post
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
 
   # Custom resource function to set identity pool roles
   setIdentityPoolRoles:

@@ -76,6 +76,17 @@
             overflow: hidden;
             min-height: 600px;
         }
+        
+        /* Allow dropdowns to escape on mobile */
+        @media (max-width: 768px) {
+            .main-content {
+                overflow: visible;
+            }
+            
+            .file-manager {
+                overflow: visible;
+            }
+        }
 
         .login-section {
             text-align: center;
@@ -144,15 +155,25 @@
 
         .file-manager {
             padding: 2rem;
+            padding-bottom: 3rem; /* Extra space for bottom dropdowns */
         }
 
         .file-manager-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
             margin-bottom: 2rem;
             padding-bottom: 1rem;
             border-bottom: 2px solid #f8f9fa;
+        }
+        
+        .file-manager-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .breadcrumb-row {
+            width: 100%;
+            margin-bottom: 0.5rem;
         }
 
         .file-manager h2 {
@@ -292,7 +313,7 @@
         .breadcrumb {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.25rem;
             margin-bottom: 1rem;
             color: #666;
             flex-wrap: wrap;
@@ -322,7 +343,7 @@
         .breadcrumb-item {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.25rem;
             cursor: pointer;
             padding: 0.25rem 0.5rem;
             border-radius: 6px;
@@ -337,7 +358,7 @@
 
         .breadcrumb-separator {
             color: #dee2e6;
-            margin: 0 0.25rem;
+            margin: 0 0.125rem;
             flex-shrink: 0;
         }
 
@@ -384,9 +405,10 @@
 
             .file-manager {
                 padding: 1rem;
+                padding-bottom: 2rem; /* Extra space for bottom dropdowns on mobile */
             }
 
-            .file-manager-header {
+            .file-manager-header-row {
                 flex-direction: column;
                 gap: 1rem;
                 align-items: stretch;
@@ -421,10 +443,21 @@
             .breadcrumb {
                 font-size: 0.875rem;
                 padding: 0.5rem 0;
+                gap: 0.25rem;
             }
 
             .breadcrumb-item {
                 padding: 0.25rem 0.375rem;
+                gap: 0.125rem;
+            }
+            
+            /* Hide "My Files" text on mobile only when in subdirectories */
+            .breadcrumb-home-text.hide-on-mobile {
+                display: none;
+            }
+            
+            .breadcrumb-separator {
+                margin: 0 0.0625rem;
             }
 
             .breadcrumb-item span {
@@ -559,6 +592,7 @@
             cursor: pointer;
             position: relative;
             min-height: 80px;
+            isolation: isolate;
         }
 
         .file-list-item:hover {
@@ -619,7 +653,7 @@
             position: relative;
             margin-left: auto;
             flex-shrink: 0;
-            z-index: 1;
+            z-index: 10;
         }
 
         /* Google Drive-style three dots menu */
@@ -665,15 +699,32 @@
             box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
             min-width: 160px;
             max-width: 240px;
-            z-index: 9999;
+            z-index: 99999;
             display: none;
             overflow: hidden;
             animation: fadeInScale 0.15s cubic-bezier(0.4, 0.0, 0.2, 1);
             transform-origin: top right;
         }
 
+        /* Dropdown positioned above when near bottom */
+        .dropdown-menu.flip-up {
+            top: auto;
+            bottom: calc(100% + 4px);
+            transform-origin: bottom right;
+        }
+
         .dropdown-menu.show {
             display: block;
+        }
+        
+        /* Ensure parent has higher z-index when dropdown is shown */
+        .file-list-item:has(.dropdown-menu.show) {
+            z-index: 1000;
+        }
+        
+        /* Fallback for browsers that don't support :has() */
+        .file-list-item.dropdown-open {
+            z-index: 1000;
         }
 
         @keyframes fadeInScale {
@@ -753,10 +804,66 @@
 
         /* Mobile specific dropdown adjustments */
         @media (max-width: 768px) {
+            /* Ensure all containers allow overflow on mobile */
+            .container, .main-content, .file-manager, #authenticated-section, #file-container {
+                overflow: visible !important;
+            }
+            
+            /* Mobile modal-style dropdown */
+            .dropdown-menu.mobile-modal {
+                position: fixed !important;
+                bottom: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                top: auto !important;
+                min-width: 100% !important;
+                max-width: none !important;
+                border-radius: 16px 16px 0 0 !important;
+                margin: 0 !important;
+                background: white !important;
+                box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25) !important;
+                z-index: 99999 !important;
+                transform: translateY(100%) !important;
+                transition: transform 0.3s ease !important;
+            }
+            
+            .dropdown-menu.mobile-modal.show {
+                transform: translateY(0) !important;
+            }
+            
+            .dropdown-menu.mobile-modal .dropdown-item {
+                padding: 16px 20px !important;
+                font-size: 16px !important;
+                border-bottom: 1px solid #f0f0f0;
+            }
+            
+            .dropdown-menu.mobile-modal .dropdown-item:last-child {
+                border-bottom: none;
+                padding-bottom: calc(16px + env(safe-area-inset-bottom));
+            }
+            
+            /* Mobile backdrop */
+            .mobile-dropdown-backdrop {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.3);
+                z-index: 99998;
+            }
+            
+            .mobile-dropdown-backdrop.show {
+                display: block;
+            }
+            
             .dropdown-menu {
                 min-width: 140px;
                 right: -8px;
                 box-shadow: 0 2px 4px 0 rgba(60, 64, 67, 0.3), 0 4px 12px 4px rgba(60, 64, 67, 0.15);
+                position: absolute;
+                z-index: 99999;
             }
 
             .dropdown-item {
@@ -1038,6 +1145,210 @@
             background: linear-gradient(45deg, #667eea, #764ba2);
             color: white;
         }
+
+        /* Tree View Styles for Move Modal */
+        .tree-view {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1rem;
+            background: #f8f9fa;
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        .tree-node {
+            margin: 0.25rem 0;
+            user-select: none;
+        }
+
+        .tree-node-content {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .tree-node-content:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .tree-node-content.selected {
+            background: #667eea;
+            color: white;
+        }
+
+        .tree-node-content.selected:hover {
+            background: #5568d9;
+        }
+
+        .tree-expand-icon {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 0.25rem;
+            font-size: 0.75rem;
+            color: #666;
+            transition: transform 0.2s ease;
+        }
+
+        .tree-expand-icon.expanded {
+            transform: rotate(90deg);
+        }
+
+        .tree-expand-icon.empty {
+            visibility: hidden;
+        }
+
+        .tree-folder-icon {
+            margin-right: 0.5rem;
+            color: #667eea;
+            font-size: 1rem;
+        }
+
+        .tree-node-content.selected .tree-folder-icon {
+            color: white;
+        }
+
+        .tree-node-label {
+            flex: 1;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .tree-children {
+            margin-left: 1.5rem;
+            border-left: 1px solid #dee2e6;
+            padding-left: 0.5rem;
+            display: none;
+        }
+
+        .tree-children.expanded {
+            display: block;
+        }
+
+        .tree-children.animating {
+            display: block;
+            animation: treeSlideDown 0.2s ease;
+        }
+
+        @keyframes treeSlideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .tree-view::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .tree-view::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+
+        .tree-view::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+
+        .tree-view::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        /* Move Modal Specific Styles */
+        .move-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100000; /* Higher than dropdown */
+        }
+
+        .move-modal-content {
+            background: white;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .move-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem;
+            border-bottom: 1px solid #e9ecef;
+            background: #f8f9fa;
+        }
+
+        .move-modal-body {
+            padding: 1.5rem;
+        }
+
+        .move-destination-info {
+            background: #e8f4fd;
+            border: 1px solid #b8daff;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .move-destination-path {
+            font-weight: 600;
+            color: #0056b3;
+            font-family: 'SF Mono', Consolas, monospace;
+        }
+
+        .move-modal-footer {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+            padding: 1.5rem;
+            border-top: 1px solid #e9ecef;
+            background: #f8f9fa;
+        }
+
+        /* Mobile adjustments for tree view */
+        @media (max-width: 768px) {
+            .move-modal-content {
+                width: 95%;
+                margin: 1rem;
+                border-radius: 15px;
+            }
+            
+            .tree-view {
+                max-height: 300px;
+                font-size: 0.9rem;
+            }
+            
+            .tree-node-content {
+                padding: 0.75rem 0.5rem;
+            }
+            
+            .tree-expand-icon {
+                width: 24px;
+                height: 24px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1078,16 +1389,19 @@
             <!-- File Manager Section -->
             <div id="authenticated-section" class="file-manager" style="display: none;">
                 <div class="file-manager-header">
-                    <div>
+                    <div class="breadcrumb-row">
                         <div class="breadcrumb" id="breadcrumb-nav">
                             <div class="breadcrumb-item" onclick="navigateToFolder('')">
                                 <i class="fas fa-home"></i>
                                 <span>My Files</span>
                             </div>
                         </div>
-                        <h2>File Manager</h2>
                     </div>
-                    <div class="file-actions">
+                    <div class="file-manager-header-row">
+                        <div>
+                            <h2>File Manager</h2>
+                        </div>
+                        <div class="file-actions">
                         <button class="btn btn-primary" id="upload-button">
                             <i class="fas fa-upload"></i>
                             Upload Files
@@ -1108,6 +1422,7 @@
                             <i class="fas fa-brain"></i>
                             View Memory
                         </button>
+                        </div>
                     </div>
                 </div>
 
@@ -1217,6 +1532,9 @@
             <button class="btn btn-secondary btn-sm" id="toggle-debug">Hide Debug Info</button>
         </div>
     </div>
+
+    <!-- Mobile dropdown backdrop -->
+    <div class="mobile-dropdown-backdrop" id="mobile-dropdown-backdrop"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js/dist/amazon-cognito-identity.min.js"></script>
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1000.0.min.js"></script>

@@ -189,11 +189,15 @@ module.exports.getDownloadUrl = async (event) => {
     }
 
     // Generate pre-signed URL for download (valid for 15 minutes)
+    const filename = decodedKey.split('/').pop();
+    // Sanitize filename for content-disposition header (ASCII only)
+    const sanitizedFilename = filename.replace(/[^\x20-\x7E]/g, '_');
+    
     const downloadUrl = s3.getSignedUrl('getObject', {
       Bucket: bucketName,
       Key: decodedKey,
       Expires: 60 * 15, // 15 minutes
-      ResponseContentDisposition: `attachment; filename="${decodedKey.split('/').pop()}"` // Force download
+      ResponseContentDisposition: `attachment; filename="${sanitizedFilename}"` // Force download
     });
 
     console.log(`Generated download URL for ${decodedKey}`);
@@ -409,6 +413,411 @@ module.exports.deleteObject = async (event) => {
     };
   } catch (error) {
     console.error('Error deleting file:', error);
+    return {
+      statusCode: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': true,
+      },
+      body: JSON.stringify({ 
+        error: error.message,
+        timestamp: new Date().toISOString()
+      }),
+    };
+  }
+};
+
+// New function for renaming files
+module.exports.renameObject = async (event) => {
+  try {
+    // Get user claims from the authorizer
+    const claims = event.requestContext?.authorizer?.claims || {};
+    const email = claims.email || 'Anonymous';
+    const userId = claims.sub || 'unknown';
+    
+    console.log(`User ${email} (${userId}) requesting file rename`);
+
+    // Get bucket name from environment variable
+    const bucketName = process.env.S3_BUCKET_NAME;
+    if (!bucketName) {
+      throw new Error('S3_BUCKET_NAME environment variable not set');
+    }
+
+    // Parse request body
+    const body = JSON.parse(event.body || '{}');
+    const oldKey = body.oldKey;
+    const newName = body.newName;
+    
+    if (!oldKey || !newName) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ error: 'oldKey and newName are required' }),
+      };
+    }
+
+    // Decode the old key (in case it was URL encoded)
+    const decodedOldKey = decodeURIComponent(oldKey);
+    
+    // Security check: only allow renaming of user's own files
+    const userPrefix = `users/${userId}/`;
+    if (!decodedOldKey.startsWith(userPrefix)) {
+      return {
+        statusCode: 403,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ 
+          error: 'Access denied: You can only rename your own files' 
+        }),
+      };
+    }
+
+    // Sanitize new name - allow alphanumeric, spaces, hyphens, underscores, dots, and forward slashes
+    const sanitizedNewName = newName.replace(/[^a-zA-Z0-9\-_\s\.\/]/g, '').trim();
+    if (!sanitizedNewName) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ 
+          error: 'Invalid file name. Use only letters, numbers, spaces, hyphens, underscores, dots, and forward slashes.' 
+        }),
+      };
+    }
+
+    // Build the new key maintaining the folder structure
+    let newKey;
+    const oldKeyParts = decodedOldKey.split('/');
+    const isFolder = decodedOldKey.endsWith('/');
+    
+    if (isFolder) {
+      // For folders, replace the folder name in the path
+      oldKeyParts[oldKeyParts.length - 2] = sanitizedNewName; // -2 because last element is empty for folders
+      newKey = oldKeyParts.join('/');
+    } else {
+      // For files, replace just the filename
+      oldKeyParts[oldKeyParts.length - 1] = sanitizedNewName;
+      newKey = oldKeyParts.join('/');
+    }
+
+    // Make sure the new key still starts with the user prefix
+    if (!newKey.startsWith(userPrefix)) {
+      return {
+        statusCode: 403,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ 
+          error: 'Invalid rename operation' 
+        }),
+      };
+    }
+
+    console.log(`Renaming from ${decodedOldKey} to ${newKey}`);
+
+    // Check if source exists
+    try {
+      await s3.headObject({ Bucket: bucketName, Key: decodedOldKey }).promise();
+    } catch (error) {
+      if (error.code === 'NotFound') {
+        return {
+          statusCode: 404,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Credentials': true,
+          },
+          body: JSON.stringify({ error: 'Source file not found' }),
+        };
+      }
+      throw error;
+    }
+
+    // Check if destination already exists
+    try {
+      await s3.headObject({ Bucket: bucketName, Key: newKey }).promise();
+      return {
+        statusCode: 409,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ error: 'A file with that name already exists' }),
+      };
+    } catch (error) {
+      // If error is NotFound, that's good - we can proceed
+      if (error.code !== 'NotFound') {
+        throw error;
+      }
+    }
+
+    if (isFolder) {
+      // For folders, we need to rename all objects with that prefix
+      const listParams = {
+        Bucket: bucketName,
+        Prefix: decodedOldKey
+      };
+      
+      const objects = await s3.listObjectsV2(listParams).promise();
+      
+      if (objects.Contents && objects.Contents.length > 0) {
+        // Copy all objects to new location
+        const copyPromises = objects.Contents.map(async (obj) => {
+          const oldObjKey = obj.Key;
+          const newObjKey = oldObjKey.replace(decodedOldKey, newKey);
+          
+          await s3.copyObject({
+            Bucket: bucketName,
+            CopySource: encodeURIComponent(`${bucketName}/${oldObjKey}`),
+            Key: newObjKey
+          }).promise();
+        });
+        
+        await Promise.all(copyPromises);
+        
+        // Delete all old objects
+        const deleteObjects = objects.Contents.map(obj => ({ Key: obj.Key }));
+        await s3.deleteObjects({
+          Bucket: bucketName,
+          Delete: { Objects: deleteObjects }
+        }).promise();
+      }
+    } else {
+      // For single file, copy to new location
+      await s3.copyObject({
+        Bucket: bucketName,
+        CopySource: encodeURIComponent(`${bucketName}/${decodedOldKey}`),
+        Key: newKey
+      }).promise();
+
+      // Delete the old file
+      await s3.deleteObject({
+        Bucket: bucketName,
+        Key: decodedOldKey
+      }).promise();
+    }
+
+    console.log(`Successfully renamed from ${decodedOldKey} to ${newKey}`);
+
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': true,
+      },
+      body: JSON.stringify({
+        message: 'File renamed successfully',
+        user: email,
+        userId: userId,
+        oldKey: decodedOldKey,
+        newKey: newKey,
+        timestamp: new Date().toISOString()
+      }),
+    };
+  } catch (error) {
+    console.error('Error renaming file:', error);
+    return {
+      statusCode: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': true,
+      },
+      body: JSON.stringify({ 
+        error: error.message,
+        timestamp: new Date().toISOString()
+      }),
+    };
+  }
+};
+
+// New function for moving files/folders
+module.exports.moveObject = async (event) => {
+  try {
+    // Get user claims from the authorizer
+    const claims = event.requestContext?.authorizer?.claims || {};
+    const email = claims.email || 'Anonymous';
+    const userId = claims.sub || 'unknown';
+    
+    console.log(`User ${email} (${userId}) requesting file move`);
+
+    // Get bucket name from environment variable
+    const bucketName = process.env.S3_BUCKET_NAME;
+    if (!bucketName) {
+      throw new Error('S3_BUCKET_NAME environment variable not set');
+    }
+
+    // Parse request body
+    const body = JSON.parse(event.body || '{}');
+    const sourceKey = body.sourceKey;
+    const destinationPath = body.destinationPath || '';
+    
+    if (!sourceKey) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ error: 'sourceKey is required' }),
+      };
+    }
+
+    // Decode the source key (in case it was URL encoded)
+    const decodedSourceKey = decodeURIComponent(sourceKey);
+    
+    // Security check: only allow moving user's own files
+    const userPrefix = `users/${userId}/`;
+    if (!decodedSourceKey.startsWith(userPrefix)) {
+      return {
+        statusCode: 403,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ 
+          error: 'Access denied: You can only move your own files' 
+        }),
+      };
+    }
+
+    // Sanitize destination path
+    const sanitizedDestination = destinationPath.replace(/[^a-zA-Z0-9\-_\s\.\/]/g, '').trim();
+    
+    // Build the new key
+    const fileName = decodedSourceKey.split('/').pop();
+    const isFolder = decodedSourceKey.endsWith('/');
+    
+    let newKey;
+    if (sanitizedDestination) {
+      // Ensure destination path ends with / for folders and doesn't for files
+      const normalizedDest = sanitizedDestination.replace(/\/+$/, '') + '/';
+      newKey = `${userPrefix}${normalizedDest}${fileName}`;
+    } else {
+      // Moving to root
+      newKey = `${userPrefix}${fileName}`;
+    }
+
+    // Prevent moving to same location
+    if (decodedSourceKey === newKey) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ error: 'Source and destination are the same' }),
+      };
+    }
+
+    console.log(`Moving from ${decodedSourceKey} to ${newKey}`);
+
+    // Check if source exists
+    try {
+      await s3.headObject({ Bucket: bucketName, Key: decodedSourceKey }).promise();
+    } catch (error) {
+      if (error.code === 'NotFound') {
+        return {
+          statusCode: 404,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Credentials': true,
+          },
+          body: JSON.stringify({ error: 'Source file not found' }),
+        };
+      }
+      throw error;
+    }
+
+    // Check if destination already exists
+    try {
+      await s3.headObject({ Bucket: bucketName, Key: newKey }).promise();
+      return {
+        statusCode: 409,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Credentials': true,
+        },
+        body: JSON.stringify({ error: 'A file with that name already exists at the destination' }),
+      };
+    } catch (error) {
+      // If error is NotFound, that's good - we can proceed
+      if (error.code !== 'NotFound') {
+        throw error;
+      }
+    }
+
+    if (isFolder) {
+      // For folders, we need to move all objects with that prefix
+      const listParams = {
+        Bucket: bucketName,
+        Prefix: decodedSourceKey
+      };
+      
+      const objects = await s3.listObjectsV2(listParams).promise();
+      
+      if (objects.Contents && objects.Contents.length > 0) {
+        // Copy all objects to new location
+        const copyPromises = objects.Contents.map(async (obj) => {
+          const oldObjKey = obj.Key;
+          const newObjKey = oldObjKey.replace(decodedSourceKey, newKey);
+          
+          await s3.copyObject({
+            Bucket: bucketName,
+            CopySource: encodeURIComponent(`${bucketName}/${oldObjKey}`),
+            Key: newObjKey
+          }).promise();
+        });
+        
+        await Promise.all(copyPromises);
+        
+        // Delete all old objects
+        const deleteObjects = objects.Contents.map(obj => ({ Key: obj.Key }));
+        await s3.deleteObjects({
+          Bucket: bucketName,
+          Delete: { Objects: deleteObjects }
+        }).promise();
+      }
+    } else {
+      // For single file, copy to new location
+      await s3.copyObject({
+        Bucket: bucketName,
+        CopySource: encodeURIComponent(`${bucketName}/${decodedSourceKey}`),
+        Key: newKey
+      }).promise();
+
+      // Delete the old file
+      await s3.deleteObject({
+        Bucket: bucketName,
+        Key: decodedSourceKey
+      }).promise();
+    }
+
+    console.log(`Successfully moved from ${decodedSourceKey} to ${newKey}`);
+
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Credentials': true,
+      },
+      body: JSON.stringify({
+        message: 'File moved successfully',
+        user: email,
+        userId: userId,
+        sourceKey: decodedSourceKey,
+        destinationKey: newKey,
+        timestamp: new Date().toISOString()
+      }),
+    };
+  } catch (error) {
+    console.error('Error moving file:', error);
     return {
       statusCode: 500,
       headers: {

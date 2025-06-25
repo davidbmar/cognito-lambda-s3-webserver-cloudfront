@@ -366,11 +366,12 @@ function updateBreadcrumb() {
     const breadcrumbNav = document.getElementById('breadcrumb-nav');
     if (!breadcrumbNav) return;
     
-    // Start with home
+    // Start with home - show text when in root, hide when in subdirectories on mobile
+    const isInSubdirectory = currentPath && currentPath.length > 0;
     let breadcrumbHTML = `
         <div class="breadcrumb-item" onclick="navigateToFolder('')">
             <i class="fas fa-home"></i>
-            <span>My Files</span>
+            <span class="breadcrumb-home-text ${isInSubdirectory ? 'hide-on-mobile' : ''}">My Files</span>
         </div>
     `;
     
@@ -448,8 +449,14 @@ async function listS3Files() {
             fileList.className = 'file-list';
             
             items.forEach((item, index) => {
-                const displayName = item.displayKey || item.key || item;
                 const fullKey = item.key || item;
+                // Calculate clean relative name - remove current path prefix and show just the filename/foldername
+                let displayName = item.displayKey || item.key || item;
+                if (currentPath && displayName.startsWith(currentPath)) {
+                    displayName = displayName.replace(currentPath, '');
+                }
+                // Remove any leading/trailing slashes for clean display
+                displayName = displayName.replace(/^\/+|\/+$/g, '');
                 const isFolder = item.isFolder || false;
                 const fileSize = isFolder ? '' : formatFileSize(item.size);
                 const fileDate = new Date(item.lastModified).toLocaleDateString();
@@ -524,6 +531,51 @@ async function listS3Files() {
                     e.stopPropagation();
                     closeAllDropdowns();
                     dropdownMenu.classList.toggle('show');
+                    
+                    if (dropdownMenu.classList.contains('show')) {
+                        // Add class to parent for z-index fix (fallback for browsers without :has())
+                        fileItem.classList.add('dropdown-open');
+                        
+                        // Check if we're on mobile (screen width <= 768px)
+                        const isMobile = window.innerWidth <= 768;
+                        
+                        if (isMobile) {
+                            // For mobile, use modal-style dropdown
+                            dropdownMenu.classList.add('mobile-modal');
+                            const backdrop = document.getElementById('mobile-dropdown-backdrop');
+                            if (backdrop) {
+                                backdrop.classList.add('show');
+                                backdrop.addEventListener('click', closeAllDropdowns);
+                            }
+                        } else {
+                            // Desktop behavior - check if dropdown would go off-screen and flip if needed
+                            setTimeout(() => {
+                                const rect = dropdownMenu.getBoundingClientRect();
+                                const viewportHeight = window.innerHeight;
+                                const dropdownHeight = 200; // Approximate dropdown height
+                                
+                                if (rect.bottom + dropdownHeight > viewportHeight) {
+                                    dropdownMenu.classList.add('flip-up');
+                                } else {
+                                    dropdownMenu.classList.remove('flip-up');
+                                }
+                            }, 0);
+                        }
+                    } else {
+                        fileItem.classList.remove('dropdown-open');
+                        dropdownMenu.classList.remove('flip-up');
+                        dropdownMenu.classList.remove('mobile-modal');
+                        // Reset positioning styles
+                        dropdownMenu.style.position = '';
+                        dropdownMenu.style.top = '';
+                        dropdownMenu.style.left = '';
+                        dropdownMenu.style.right = '';
+                        // Hide backdrop
+                        const backdrop = document.getElementById('mobile-dropdown-backdrop');
+                        if (backdrop) {
+                            backdrop.classList.remove('show');
+                        }
+                    }
                 });
                 
                 // Add event listeners for dropdown items
@@ -1361,7 +1413,23 @@ async function deleteFile(fileKey, displayName, isFolder = false) {
 function closeAllDropdowns() {
     document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
         menu.classList.remove('show');
+        menu.classList.remove('flip-up');
+        menu.classList.remove('mobile-modal');
+        // Reset positioning styles for mobile
+        menu.style.position = '';
+        menu.style.top = '';
+        menu.style.left = '';
+        menu.style.right = '';
     });
+    // Also remove the dropdown-open class from all file items
+    document.querySelectorAll('.file-list-item.dropdown-open').forEach(item => {
+        item.classList.remove('dropdown-open');
+    });
+    // Hide mobile backdrop
+    const backdrop = document.getElementById('mobile-dropdown-backdrop');
+    if (backdrop) {
+        backdrop.classList.remove('show');
+    }
 }
 
 // Close dropdowns when clicking outside
@@ -1438,68 +1506,318 @@ async function renameFile(fileKey, oldName, isFolder) {
             return;
         }
         
-        closeModal();
+        // Show loading state
+        confirmBtn.disabled = true;
+        confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Renaming...';
         
-        // Show notification that this feature needs implementation
-        showNotification('Rename feature coming soon! This will copy the file with a new name and delete the original.', 'info');
+        const idToken = localStorage.getItem('id_token');
+        if (!idToken) {
+            alert('You must be logged in to rename files');
+            closeModal();
+            return;
+        }
+        
+        try {
+            console.log(`Renaming ${fileKey} to ${sanitizedName}`);
+            
+            const response = await fetch(`${config.appUrl}/api/s3/rename`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${idToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    oldKey: fileKey,
+                    newName: sanitizedName
+                })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Rename failed: ${response.status}`);
+            }
+            
+            const result = await response.json();
+            console.log('Rename successful:', result);
+            
+            closeModal();
+            
+            // Refresh the file list to show the renamed file
+            setTimeout(() => {
+                listS3Files();
+            }, 300);
+            
+        } catch (error) {
+            console.error('Error renaming file:', error);
+            alert(`Failed to rename ${isFolder ? 'folder' : 'file'}: ${error.message}`);
+            closeModal();
+        }
     });
 }
 
-// Move file or folder with folder picker
+// Move file or folder with tree picker
 async function moveFile(fileKey, fileName, isFolder) {
-    // Create modal for move
-    const modal = document.createElement('div');
-    modal.className = 'upload-modal';
-    modal.innerHTML = `
-        <div class="upload-modal-content" style="max-width: 500px;">
-            <div class="upload-modal-header">
-                <h3>Move "${fileName}"</h3>
-                <button class="close-modal" id="close-move">&times;</button>
-            </div>
-            <div style="padding: 1.5rem;">
-                <label for="destination-input" style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Destination folder:</label>
-                <input type="text" id="destination-input" placeholder="Leave empty for root folder" 
-                       style="width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; margin-bottom: 1rem;">
-                <div style="font-size: 0.875rem; color: #666; margin-bottom: 1rem;">
-                    <i class="fas fa-info-circle"></i>
-                    Enter the folder path where you want to move this ${isFolder ? 'folder' : 'file'}
+    showMoveModal(fileKey, fileName, isFolder);
+}
+
+// Build folder tree structure from S3 file list
+function buildFolderTree(files) {
+    const tree = { name: 'My Files', path: '', children: {}, isRoot: true };
+    
+    files.forEach(file => {
+        if (!file.key) return;
+        
+        // Remove user prefix for clean paths
+        let cleanPath = file.key;
+        if (cleanPath.includes('/users/')) {
+            cleanPath = cleanPath.split('/').slice(2).join('/'); // Remove users/userId/
+        }
+        
+        // Skip files, only process folders
+        if (!cleanPath.endsWith('/') && !file.isFolder) {
+            // For files, add their parent folders to the tree
+            const pathParts = cleanPath.split('/');
+            pathParts.pop(); // Remove filename
+            if (pathParts.length > 0) {
+                addFolderToTree(tree, pathParts, '');
+            }
+            return;
+        }
+        
+        // Process folder
+        let folderPath = cleanPath;
+        if (folderPath.endsWith('/')) {
+            folderPath = folderPath.slice(0, -1);
+        }
+        
+        if (folderPath) {
+            const pathParts = folderPath.split('/');
+            addFolderToTree(tree, pathParts, '');
+        }
+    });
+    
+    return tree;
+}
+
+function addFolderToTree(tree, pathParts, basePath) {
+    if (pathParts.length === 0) return;
+    
+    const [currentPart, ...remainingParts] = pathParts;
+    const currentPath = basePath ? `${basePath}/${currentPart}` : currentPart;
+    
+    if (!tree.children[currentPart]) {
+        tree.children[currentPart] = {
+            name: currentPart,
+            path: currentPath,
+            children: {},
+            isFolder: true
+        };
+    }
+    
+    if (remainingParts.length > 0) {
+        addFolderToTree(tree.children[currentPart], remainingParts, currentPath);
+    }
+}
+
+// Show move modal with tree selector
+async function showMoveModal(fileKey, fileName, isFolder) {
+    // First, get all files to build the folder tree
+    const idToken = localStorage.getItem('id_token');
+    if (!idToken) {
+        alert('You must be logged in to move files');
+        return;
+    }
+    
+    try {
+        // Fetch all files to build folder structure
+        const response = await fetch(`${config.appUrl}/api/s3/list?prefix=`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to fetch folders: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const folderTree = buildFolderTree(data.files || []);
+        
+        // Create move modal
+        const modal = document.createElement('div');
+        modal.className = 'move-modal';
+        modal.innerHTML = `
+            <div class="move-modal-content">
+                <div class="move-modal-header">
+                    <h3>Move "${fileName}"</h3>
+                    <button class="close-modal" id="close-move-modal">&times;</button>
                 </div>
-                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
-                    <button class="btn btn-secondary" id="cancel-move">Cancel</button>
-                    <button class="btn btn-primary" id="confirm-move">
+                <div class="move-modal-body">
+                    <div class="move-destination-info">
+                        <strong>Destination:</strong> <span class="move-destination-path" id="selected-path">🏠 My Files</span>
+                    </div>
+                    <div class="tree-view" id="folder-tree"></div>
+                </div>
+                <div class="move-modal-footer">
+                    <button class="btn btn-secondary" id="cancel-move-modal">Cancel</button>
+                    <button class="btn btn-primary" id="confirm-move-modal">
                         <i class="fas fa-arrows-alt"></i>
-                        Move
+                        Move Here
                     </button>
                 </div>
             </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Build and render tree
+        const treeContainer = modal.querySelector('#folder-tree');
+        const selectedPathElement = modal.querySelector('#selected-path');
+        let selectedPath = '';
+        
+        renderTreeNode(folderTree, treeContainer, selectedPathElement, (path) => {
+            selectedPath = path;
+        });
+        
+        // Event handlers
+        const closeBtn = modal.querySelector('#close-move-modal');
+        const cancelBtn = modal.querySelector('#cancel-move-modal');
+        const confirmBtn = modal.querySelector('#confirm-move-modal');
+        
+        const closeModal = () => {
+            document.body.removeChild(modal);
+        };
+        
+        closeBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', closeModal);
+        
+        confirmBtn.addEventListener('click', async () => {
+            await executeMoveOperation(fileKey, fileName, selectedPath, isFolder);
+            closeModal();
+        });
+        
+    } catch (error) {
+        console.error('Error loading folders:', error);
+        alert(`Failed to load folders: ${error.message}`);
+    }
+}
+
+// Render tree node recursively
+function renderTreeNode(node, container, selectedPathElement, onSelect) {
+    const nodeElement = document.createElement('div');
+    nodeElement.className = 'tree-node';
+    
+    const hasChildren = Object.keys(node.children).length > 0;
+    const isExpanded = node.isRoot; // Root starts expanded
+    
+    nodeElement.innerHTML = `
+        <div class="tree-node-content" data-path="${node.path || ''}">
+            <span class="tree-expand-icon ${hasChildren ? (isExpanded ? 'expanded' : '') : 'empty'}">
+                ${hasChildren ? '▶' : ''}
+            </span>
+            <i class="fas fa-folder tree-folder-icon"></i>
+            <span class="tree-node-label">${node.name}</span>
         </div>
+        <div class="tree-children ${isExpanded ? 'expanded' : ''}"></div>
     `;
     
-    document.body.appendChild(modal);
-    modal.style.display = 'flex';
+    const nodeContent = nodeElement.querySelector('.tree-node-content');
+    const expandIcon = nodeElement.querySelector('.tree-expand-icon');
+    const childrenContainer = nodeElement.querySelector('.tree-children');
     
-    const input = modal.querySelector('#destination-input');
-    const closeBtn = modal.querySelector('#close-move');
-    const cancelBtn = modal.querySelector('#cancel-move');
-    const confirmBtn = modal.querySelector('#confirm-move');
-    
-    input.focus();
-    
-    const closeModal = () => {
-        document.body.removeChild(modal);
-    };
-    
-    closeBtn.addEventListener('click', closeModal);
-    cancelBtn.addEventListener('click', closeModal);
-    
-    confirmBtn.addEventListener('click', async () => {
-        const destination = input.value.trim();
+    // Handle node selection
+    nodeContent.addEventListener('click', (e) => {
+        e.stopPropagation();
         
-        closeModal();
+        // Update selection
+        container.querySelectorAll('.tree-node-content').forEach(el => 
+            el.classList.remove('selected'));
+        nodeContent.classList.add('selected');
         
-        // Show notification that this feature needs implementation
-        showNotification('Move feature coming soon! This will copy the file to the new location and delete the original.', 'info');
+        // Update selected path display
+        const displayPath = node.path ? `🏠 My Files/${node.path}` : '🏠 My Files';
+        selectedPathElement.textContent = displayPath;
+        
+        // Call selection callback
+        onSelect(node.path || '');
     });
+    
+    // Handle expand/collapse
+    if (hasChildren) {
+        expandIcon.addEventListener('click', (e) => {
+            e.stopPropagation();
+            
+            if (childrenContainer.classList.contains('expanded')) {
+                // Collapse
+                expandIcon.classList.remove('expanded');
+                childrenContainer.classList.remove('expanded');
+            } else {
+                // Expand
+                expandIcon.classList.add('expanded');
+                childrenContainer.classList.add('expanded', 'animating');
+                
+                // Remove animation class after animation completes
+                setTimeout(() => {
+                    childrenContainer.classList.remove('animating');
+                }, 200);
+            }
+        });
+        
+        // Render children
+        Object.values(node.children)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .forEach(child => {
+                renderTreeNode(child, childrenContainer, selectedPathElement, onSelect);
+            });
+    }
+    
+    container.appendChild(nodeElement);
+    
+    // Auto-select root on initial render
+    if (node.isRoot) {
+        nodeContent.classList.add('selected');
+    }
+}
+
+// Execute the actual move operation
+async function executeMoveOperation(sourceKey, fileName, destinationPath, isFolder) {
+    const idToken = localStorage.getItem('id_token');
+    
+    try {
+        console.log(`Moving ${sourceKey} to ${destinationPath}`);
+        
+        const response = await fetch(`${config.appUrl}/api/s3/move`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                sourceKey: sourceKey,
+                destinationPath: destinationPath
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Move failed: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('Move successful:', result);
+        
+        // Refresh the file list
+        setTimeout(() => {
+            listS3Files();
+        }, 300);
+        
+    } catch (error) {
+        console.error('Error moving file:', error);
+        alert(`Failed to move ${isFolder ? 'folder' : 'file'}: ${error.message}`);
+    }
 }
 
 // Show notification function
