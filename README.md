@@ -1,30 +1,88 @@
+# CloudDrive - Serverless Personal File Manager
 
-<img width="1478" alt="Screenshot 2025-06-23 at 12 35 40 AM" src="https://github.com/user-attachments/assets/a6a5ecf4-49c8-4b7a-9444-9e19c8e838bf" />
-<img width="1386" alt="Screenshot 2025-06-23 at 12 35 33 AM" src="https://github.com/user-attachments/assets/b386a9ab-55e6-4d5e-bb6e-ebcaf64adf66" />
+A modern, secure personal file manager built with AWS serverless technologies. Upload, organize, and manage your files with a beautiful responsive interface that works seamlessly across all devices.
 
+<img width="1478" alt="CloudDrive Desktop Interface" src="https://github.com/user-attachments/assets/a6a5ecf4-49c8-4b7a-9444-9e19c8e838bf" />
+<img width="1386" alt="CloudDrive File Management" src="https://github.com/user-attachments/assets/b386a9ab-55e6-4d5e-bb6e-ebcaf64adf66" />
 
+## ✨ Features
 
-# AWS Serverless Application with Cognito Authentication and CloudFront
+### 📁 Complete File Management
+- **Upload Files**: Drag-and-drop or click to upload files up to 100MB
+- **Folder Navigation**: Create and navigate through nested folder structures
+- **Rename**: Rename files and folders with validation
+- **Move**: Intuitive tree-view selector for moving files between folders
+- **Delete**: Safe deletion with confirmation prompts
+- **Download**: Secure pre-signed URL downloads
 
-This guide walks through setting up a complete serverless application on AWS with Cognito authentication, API Gateway, Lambda, S3 for web hosting, and CloudFront for secure HTTPS access.
+### 📱 Mobile-First Design
+- **Responsive UI**: Beautiful interface that adapts to any screen size
+- **iOS Action Sheets**: Native-feeling dropdown menus on iPhone/iPad
+- **Touch-Optimized**: Large touch targets and gesture-friendly interactions
+- **Mobile Navigation**: Compact breadcrumbs and optimized layout
 
-## Architecture Overview
+### 🔐 Enterprise-Grade Security
+- **AWS Cognito Authentication**: Secure user management with JWT tokens
+- **User Isolation**: Each user can only access their own files
+- **Pre-signed URLs**: Secure, time-limited download links
+- **HTTPS Everywhere**: All traffic encrypted via CloudFront
+
+### 🚀 Modern Architecture
+- **Serverless**: Zero-maintenance infrastructure that scales automatically
+- **Fast Performance**: CloudFront CDN for global content delivery
+- **Real-time Updates**: Instant UI updates after file operations
+
+## 🏗️ Architecture Overview
 
 ![Architecture Diagram](https://d1.awsstatic.com/architecture-diagrams/ArchitectureDiagrams/serverless-webapp-architecture-diagram.8ae3844048f8e76c95f66d7dfd4dd33c961ec91d.png)
 
 - **Frontend Hosting**: Amazon S3 for storage + CloudFront for HTTPS delivery
 - **Authentication**: Amazon Cognito User Pools and Identity Pools
 - **Backend API**: AWS Lambda functions accessed via API Gateway
-- **Deployment**: Serverless Framework
+- **File Storage**: S3 with user-scoped prefixes for security
+- **Deployment**: Serverless Framework with automated configuration
 
-## Prerequisites
+## 🚀 Quick Start
+
+### Prerequisites
 
 - AWS CLI installed and configured
 - Node.js (v14+) and npm installed
 - Serverless Framework installed: `npm install -g serverless`
 - Git
 
-## Required IAM Permissions
+### 1. Clone and Deploy
+
+```bash
+git clone https://github.com/davidbmar/cognito-lambda-s3-webserver-cloudfront.git
+cd cognito-lambda-s3-webserver-cloudfront
+chmod +x deploy.sh
+./deploy.sh
+```
+
+### 2. Create Your First User
+
+```bash
+aws cognito-idp admin-create-user \
+  --user-pool-id [YOUR_USER_POOL_ID] \
+  --username your-email@example.com \
+  --temporary-password TempPass123! \
+  --message-action SUPPRESS
+
+aws cognito-idp admin-set-user-password \
+  --user-pool-id [YOUR_USER_POOL_ID] \
+  --username your-email@example.com \
+  --password YourPassword123! \
+  --permanent
+```
+
+### 3. Access Your App
+
+After deployment, you'll get a CloudFront URL. Visit it and sign in with your credentials!
+
+## 🛠️ Technical Details
+
+### Required IAM Permissions
 
 The following AWS IAM permissions are needed to deploy this application:
 
@@ -57,204 +115,164 @@ The following AWS IAM permissions are needed to deploy this application:
 }
 ```
 
-You can create a policy with these permissions and attach it to your IAM user or role.
+### API Endpoints
 
-### 3. Setup Configuration
+The backend provides several secure API endpoints:
 
-The main configuration is in `serverless.yml`. Review and modify as needed:
+- **GET /api/s3/list** - List user's files and folders
+- **POST /api/s3/upload-url** - Generate pre-signed upload URLs
+- **GET /api/s3/download/{key}** - Generate secure download URLs
+- **DELETE /api/s3/delete/{key}** - Delete files/folders
+- **POST /api/s3/rename** - Rename files/folders
+- **POST /api/s3/move** - Move files between folders
 
-- Update the AWS region if you want to deploy to a different region
-- Update the S3 bucket name pattern if desired
-- Review the Cognito settings and adjust as needed
+### File Structure
 
-The `app.js` file in the web directory contains frontend configuration that will be automatically updated during deployment:
-
-```javascript
-// Configuration - to be updated after deployment
-const config = {
-    userPoolId: 'YOUR_USER_POOL_ID',
-    userPoolClientId: 'YOUR_USER_POOL_CLIENT_ID',
-    identityPoolId: 'YOUR_IDENTITY_POOL_ID',
-    region: 'us-east-2',
-    apiUrl: 'YOUR_API_ENDPOINT',
-    appUrl: 'http://localhost:8080'
-};
+```
+├── web/
+│   ├── index.html          # Main application UI
+│   ├── app.js.template     # Frontend JavaScript (template)
+│   └── callback.html       # OAuth callback handler
+├── api/
+│   ├── handler.js          # Main API endpoints
+│   └── s3.js              # S3 file operations
+├── serverless.yml.template # Infrastructure configuration
+└── deploy.sh              # Automated deployment script
 ```
 
-These placeholders will be automatically replaced during deployment.
+### Security Features
 
-### 4. Configure Serverless Framework
+1. **User Isolation**: Files are stored with `users/{userId}/` prefixes
+2. **Authentication**: All API calls require valid Cognito JWT tokens
+3. **Input Validation**: File names and paths are sanitized
+4. **Pre-signed URLs**: Secure, time-limited access to S3 objects
+5. **CORS Protection**: Proper CORS headers for web security
 
-The `serverless.yml` file defines all the AWS resources:
+## 📱 Mobile Optimizations
 
-- Lambda functions
-- API Gateway endpoints
-- Cognito User and Identity Pools
-- S3 bucket for web hosting
-- CloudFront distribution
-- IAM roles and permissions
+### iOS Action Sheets
+On iPhone and iPad, dropdown menus use native-style action sheets that slide up from the bottom, providing a familiar iOS experience.
 
-Key configurations to review:
+### Responsive Design
+- Breadcrumb navigation automatically adapts to screen size
+- Touch targets are optimized for mobile interaction
+- Dropdowns and modals are repositioned to avoid viewport clipping
 
-- **Region**: Defaults to `us-east-2` but can be changed
-- **S3 Bucket Name**: Generated using your account ID
-- **Cognito Settings**: User pool, client, and identity pool configurations
+### Performance
+- Lazy loading for large file lists
+- Optimized image handling for mobile networks
+- Minimal JavaScript bundle size
 
-### 5. Prepare the Web Application
+## 🔧 Configuration
 
-The frontend is pre-configured, but the `app.js` file has placeholders that will be automatically updated during deployment:
+The deployment script automatically configures all necessary settings:
 
-```javascript
-// Configuration - to be updated after deployment
-const config = {
-    userPoolId: 'YOUR_USER_POOL_ID',
-    userPoolClientId: 'YOUR_USER_POOL_CLIENT_ID',
-    identityPoolId: 'YOUR_IDENTITY_POOL_ID',
-    region: 'us-east-2',
-    apiUrl: 'YOUR_API_ENDPOINT',
-    appUrl: 'http://localhost:8080'
-};
-```
+1. **Backend Deployment**: Creates all AWS resources via CloudFormation
+2. **Configuration Update**: Updates frontend with actual resource IDs
+3. **S3 Upload**: Deploys website files to S3
+4. **Cognito Setup**: Configures authentication URLs and policies
 
-These placeholders will be automatically replaced during deployment.
+## 🎯 Use Cases
 
-## Deployment
+- **Personal Cloud Storage**: Secure alternative to public cloud services
+- **Team File Sharing**: Private file sharing within organizations
+- **Document Management**: Organize and access documents from anywhere
+- **Media Storage**: Store and organize photos, videos, and other media
+- **Backup Solution**: Secure cloud backup for important files
 
-### 1. Make the Deployment Script Executable
+## 🔄 Development Workflow
 
+### Making Changes
+
+1. Edit `web/app.js.template` for frontend changes
+2. Edit `api/*.js` files for backend changes
+3. Run `./deploy.sh` to deploy updates
+4. The script automatically handles configuration updates
+
+### Local Testing
+
+For backend development:
 ```bash
-chmod +x deploy.sh
+serverless offline
 ```
 
-### 2. Run the Deployment
+For frontend development, serve the `web/` directory with any static server.
 
-```bash
-./deploy.sh
-```
+## 🧹 Cleanup
 
-This script will:
-
-1. Deploy the serverless application using CloudFormation
-2. Get configuration outputs from the CloudFormation stack
-3. Update the web app configuration with actual AWS resource IDs
-4. Set up the Cognito Identity Pool roles
-5. Upload the website files to S3
-6. Configure the Cognito User Pool Client to use the CloudFront URL
-
-### 3. Expected Output
-
-After a successful deployment (which takes 3-5 minutes), you'll see output like:
-
-```
-Deployment complete!
-Website URL: http://[your-bucket-name].s3-website.us-east-2.amazonaws.com
-CloudFront URL: https://[cloudfront-id].cloudfront.net
-API Endpoint: https://[api-id].execute-api.us-east-2.amazonaws.com/dev/data
-User Pool ID: us-east-2_[id]
-User Pool Client ID: [client-id]
-Identity Pool ID: us-east-2:[id]
-```
-
-**Note**: The CloudFront distribution takes 10-15 minutes to fully deploy.
-
-## Creating a User
-
-Before you can log in, you'll need to create a user in the Cognito User Pool:
-
-```bash
-aws cognito-idp admin-create-user \
-  --user-pool-id [YOUR_USER_POOL_ID] \
-  --username test@example.com \
-  --temporary-password Test123! \
-  --message-action SUPPRESS
-
-aws cognito-idp admin-set-user-password \
-  --user-pool-id [YOUR_USER_POOL_ID] \
-  --username test@example.com \
-  --password Test123! \
-  --permanent
-```
-
-Replace `[YOUR_USER_POOL_ID]` with the User Pool ID from the deployment output.
-
-Alternatively, you can create a user through the AWS Console:
-
-1. Go to the AWS Console > Cognito > User Pools
-2. Select your User Pool (named something like "cloudfront-cognito-app-user-pool-dev")
-3. Go to "Users and groups" > "Create user"
-4. Enter the user details including email
-5. Click "Create user"
-6. Check your email for the temporary password (if you don't use `--message-action SUPPRESS`)
-
-## How Authentication Works
-
-1. User clicks "Sign In" button
-2. They're redirected to the Cognito Hosted UI
-3. After successful login, Cognito redirects to the callback URL
-4. The callback page extracts tokens and stores them locally
-5. The tokens are used to authenticate API requests
-
-## Cleanup
-
-To avoid incurring AWS charges, remove all resources when not needed:
+To avoid AWS charges, remove all resources when done:
 
 ```bash
 serverless remove
 ```
 
-This will delete all resources created by the CloudFormation stack.
+This will delete all CloudFormation resources including S3 buckets (with all files), Lambda functions, API Gateway, Cognito pools, and CloudFront distribution.
 
-## Troubleshooting
+## 📊 Costs
 
-### Common Issues:
+Typical monthly costs for light usage:
+- **S3 Storage**: $0.023/GB
+- **Lambda**: First 1M requests free
+- **API Gateway**: First 1M requests free
+- **CloudFront**: First 1TB transfer free
+- **Cognito**: First 50,000 MAUs free
+
+For most personal use cases, this will cost less than $5/month.
+
+## 🐛 Troubleshooting
+
+### Common Issues
 
 1. **"Client does not exist" error**: 
-   - Verify the User Pool Client ID in app.js matches the actual client ID
-   - Check if the CloudFront URL is correctly set in the Cognito User Pool Client
+   - Verify the User Pool Client ID matches in app.js
+   - Check if CloudFront URL is set in Cognito User Pool Client
 
-2. **S3 bucket upload failures**:
-   - Check if the S3 bucket exists in your AWS account
-   - Verify the bucket name is correctly formatted in serverless.yml and deploy.sh
+2. **Upload failures**:
+   - Check file size (100MB limit)
+   - Verify S3 bucket permissions
+   - Check browser console for detailed errors
 
 3. **Authentication fails**:
-   - Ensure the Cognito User Pool Client has the correct callback URLs
-   - Check that your user was created successfully
+   - Ensure user exists in Cognito User Pool
+   - Check password meets complexity requirements
+   - Verify callback URLs in Cognito configuration
 
-4. **API access denied**:
-   - Verify the API Gateway authorizer is correctly configured
-   - Check that the ID token is being passed in the Authorization header
+4. **Mobile dropdown issues**:
+   - Clear browser cache
+   - Try different mobile browsers
+   - Check for JavaScript errors in console
 
-For detailed logs and debugging:
-- Check CloudWatch Logs for Lambda function logs
-- Use browser developer tools to inspect network requests
-- Run `serverless logs -f [function-name]` to see specific function logs
+### Debug Tools
 
-## Security Considerations
+- **CloudWatch Logs**: Monitor Lambda function execution
+- **Browser DevTools**: Inspect network requests and console errors
+- **Serverless Logs**: `serverless logs -f functionName`
 
-1. **S3 Bucket Access**: The S3 bucket is not publicly accessible. All content is served through CloudFront.
+## 🤝 Contributing
 
-2. **CloudFront Security**: CloudFront uses Origin Access Identity to securely access the S3 bucket. The S3 bucket policy only allows access from your specific CloudFront distribution.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly on both desktop and mobile
+5. Submit a pull request
 
-3. **API Security**: The API is protected by Cognito authentication. All requests require a valid JWT token.
+## 📄 License
 
-4. **HTTPS**: CloudFront serves content over HTTPS with a default CloudFront certificate.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Next Steps and Improvements
+## 🙏 Acknowledgments
 
-1. **Custom Domain**: Add a custom domain for your CloudFront distribution
-2. **Enhanced Authentication**: Add social login providers or multi-factor authentication
-3. **Database Integration**: Add DynamoDB to store user data
-4. **CI/CD Pipeline**: Set up automated deployment with AWS CodePipeline
-5. **Monitoring**: Add AWS CloudWatch Alarms and Logs for monitoring
+Built with:
+- [AWS Serverless Framework](https://www.serverless.com/)
+- [Amazon Cognito](https://aws.amazon.com/cognito/)
+- [AWS Lambda](https://aws.amazon.com/lambda/)
+- [Amazon CloudFront](https://aws.amazon.com/cloudfront/)
+- [Amazon S3](https://aws.amazon.com/s3/)
 
-## Reference Documentation
+## 📚 Reference Documentation
 
 - [Serverless Framework Documentation](https://www.serverless.com/framework/docs/)
 - [Amazon Cognito Documentation](https://docs.aws.amazon.com/cognito/latest/developerguide/what-is-amazon-cognito.html)
 - [AWS Lambda Documentation](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html)
 - [Amazon CloudFront Documentation](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Introduction.html)
 - [Amazon S3 Documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html)
-
-## License
-
-[MIT License](LICENSE)
