@@ -1349,6 +1349,114 @@
                 height: 24px;
             }
         }
+
+        /* Dashboard Card Styles */
+        .dashboard-card {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 20px;
+            padding: 2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .dashboard-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(102, 126, 234, 0.2);
+            border-color: #667eea;
+        }
+
+        .dashboard-card-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+            color: white;
+            font-size: 2rem;
+        }
+
+        .dashboard-card h3 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 0.75rem;
+        }
+
+        .dashboard-card p {
+            color: #666;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
+        .dashboard-features {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 2rem 0;
+        }
+
+        .dashboard-features li {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 0;
+            color: #555;
+            font-size: 0.9rem;
+        }
+
+        .dashboard-features li i {
+            color: #28a745;
+            font-size: 0.8rem;
+        }
+
+        .dashboard-card-action {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #667eea;
+            font-weight: 600;
+            font-size: 1rem;
+            margin-top: auto;
+        }
+
+        .dashboard-card:hover .dashboard-card-action {
+            color: #5568d9;
+        }
+
+        .dashboard-card:hover .dashboard-card-action i {
+            transform: translateX(5px);
+        }
+
+        .dashboard-card-action i {
+            transition: transform 0.3s ease;
+        }
+
+        /* Mobile dashboard adjustments */
+        @media (max-width: 768px) {
+            .dashboard-card {
+                padding: 1.5rem;
+            }
+
+            .dashboard-card-icon {
+                width: 60px;
+                height: 60px;
+                font-size: 1.5rem;
+                margin-bottom: 1rem;
+            }
+
+            .dashboard-card h3 {
+                font-size: 1.25rem;
+            }
+
+            .dashboard-features li {
+                font-size: 0.85rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1386,6 +1494,56 @@
                 </div>
             </div>
 
+            <!-- Dashboard Section -->
+            <div id="dashboard-section" class="file-manager" style="display: none;">
+                <div class="file-manager-header">
+                    <div class="file-manager-header-row">
+                        <div>
+                            <h2>CloudDrive Dashboard</h2>
+                            <p style="color: #666; margin-top: 0.5rem;">Choose how you'd like to get started</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; padding: 2rem 0;">
+                    <!-- File Manager Card -->
+                    <div class="dashboard-card" onclick="showFileManager()">
+                        <div class="dashboard-card-icon">
+                            <i class="fas fa-folder-open"></i>
+                        </div>
+                        <h3>File Manager</h3>
+                        <p>Upload, organize, and manage your files in secure cloud storage</p>
+                        <ul class="dashboard-features">
+                            <li><i class="fas fa-check"></i> Upload and download files</li>
+                            <li><i class="fas fa-check"></i> Create and manage folders</li>
+                            <li><i class="fas fa-check"></i> Secure user-isolated storage</li>
+                        </ul>
+                        <div class="dashboard-card-action">
+                            <i class="fas fa-arrow-right"></i>
+                            Browse Files
+                        </div>
+                    </div>
+
+                    <!-- Audio Recorder Card -->
+                    <div class="dashboard-card" onclick="window.location.href='audio.html'">
+                        <div class="dashboard-card-icon">
+                            <i class="fas fa-microphone"></i>
+                        </div>
+                        <h3>Audio Recorder</h3>
+                        <p>Record high-quality audio with automatic chunking and cloud upload</p>
+                        <ul class="dashboard-features">
+                            <li><i class="fas fa-check"></i> Real-time audio recording</li>
+                            <li><i class="fas fa-check"></i> Automatic S3 upload</li>
+                            <li><i class="fas fa-check"></i> Mobile-optimized interface</li>
+                        </ul>
+                        <div class="dashboard-card-action">
+                            <i class="fas fa-arrow-right"></i>
+                            Start Recording
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- File Manager Section -->
             <div id="authenticated-section" class="file-manager" style="display: none;">
                 <div class="file-manager-header">
@@ -1400,6 +1558,12 @@
                     <div class="file-manager-header-row">
                         <div>
                             <h2>File Manager</h2>
+                        </div>
+                        <div style="display: flex; gap: 1rem; align-items: center;">
+                            <button class="btn btn-secondary" onclick="showDashboard()">
+                                <i class="fas fa-arrow-left"></i>
+                                Back to Dashboard
+                            </button>
                         </div>
                         <div class="file-actions">
                         <button class="btn btn-primary" id="upload-button">

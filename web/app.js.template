@@ -28,7 +28,7 @@ function checkAuthentication() {
     console.log("Checking authentication...");
     const idToken = localStorage.getItem('id_token');
     const loginSection = document.getElementById('login-section');
-    const authenticatedSection = document.getElementById('authenticated-section');
+    const dashboardSection = document.getElementById('dashboard-section');
     const userInfo = document.getElementById('user-info');
     const userAvatar = document.getElementById('user-avatar');
     const userName = document.getElementById('user-name');
@@ -48,7 +48,7 @@ function checkAuthentication() {
                 return;
             }
             
-            console.log("Token valid, displaying authenticated section");
+            console.log("Token valid, displaying dashboard");
             
             // Update user info
             const email = payload.email || 'User';
@@ -57,15 +57,10 @@ function checkAuthentication() {
             userAvatar.textContent = initials;
             userName.textContent = email;
             
-            // Show authenticated UI
+            // Show dashboard UI
             loginSection.style.display = 'none';
-            authenticatedSection.style.display = 'block';
+            dashboardSection.style.display = 'block';
             userInfo.style.display = 'flex';
-            
-            // Auto-load files
-            setTimeout(() => {
-                listS3Files();
-            }, 500);
             
         } catch (error) {
             console.error('Error parsing token:', error);
@@ -79,11 +74,15 @@ function checkAuthentication() {
 
 function showLoginSection() {
     const loginSection = document.getElementById('login-section');
+    const dashboardSection = document.getElementById('dashboard-section');
     const authenticatedSection = document.getElementById('authenticated-section');
+    const memorySection = document.getElementById('memory-section');
     const userInfo = document.getElementById('user-info');
     
     loginSection.style.display = 'block';
+    dashboardSection.style.display = 'none';
     authenticatedSection.style.display = 'none';
+    memorySection.style.display = 'none';
     userInfo.style.display = 'none';
 }
 
@@ -2090,5 +2089,35 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeUpload();
     initializeFolderCreation();
 });
+
+// Dashboard and File Manager Navigation
+function showDashboard() {
+    const dashboardSection = document.getElementById('dashboard-section');
+    const authenticatedSection = document.getElementById('authenticated-section');
+    const memorySection = document.getElementById('memory-section');
+    
+    // Show dashboard, hide other sections
+    dashboardSection.style.display = 'block';
+    authenticatedSection.style.display = 'none';
+    memorySection.style.display = 'none';
+}
+
+function showFileManager() {
+    const dashboardSection = document.getElementById('dashboard-section');
+    const authenticatedSection = document.getElementById('authenticated-section');
+    const memorySection = document.getElementById('memory-section');
+    
+    // Show file manager, hide other sections
+    dashboardSection.style.display = 'none';
+    authenticatedSection.style.display = 'block';
+    memorySection.style.display = 'none';
+    
+    // Auto-load files when entering file manager
+    setTimeout(() => {
+        if (typeof listS3Files === 'function') {
+            listS3Files();
+        }
+    }, 100);
+}
 
 

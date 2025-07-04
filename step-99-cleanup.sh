@@ -168,7 +168,7 @@ fi
 
 # Remove local generated files
 echo "🧹 Cleaning up local files..."
-rm -f web/app.js web/app.js.bak serverless.yml.bak
+rm -f web/app.js web/app.js.bak web/audio.html web/audio.html.bak serverless.yml.bak serverless.yml.backup-*
 rm -f .env.bak
 rm -rf .serverless
 
