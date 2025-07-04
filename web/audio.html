@@ -639,46 +639,42 @@
                     </div>
 
                     <div className="container">
-                        <div className="grid grid-cols-2 gap-6 p-4">
-                            {/* Recording Controls */}
-                            <div className="card p-6">
-                                <div className="flex items-center gap-2 mb-6">
-                                    <MicIcon />
-                                    <h2 className="text-lg font-bold">Audio Recorder</h2>
+                        <div className="grid grid-cols-2 gap-4 p-3">
+                            {/* Recording Controls - Compact */}
+                            <div className="card p-3">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <MicIcon size={16} />
+                                    <h2 className="text-base font-bold">Audio Recorder</h2>
                                 </div>
                                 
-                                <div className="flex flex-col items-center gap-4 mb-6">
+                                <div className="flex items-center gap-3 mb-3">
                                     <button
                                         className={`btn btn-lg ${isRecording ? 'btn-destructive animate-pulse' : 'btn-primary'}`}
                                         onClick={handleRecord}
+                                        style={{width: '60px', height: '60px'}}
                                     >
-                                        {isRecording ? <SquareIcon /> : <MicIcon />}
+                                        {isRecording ? <SquareIcon size={20} /> : <MicIcon size={20} />}
                                     </button>
                                     
-                                    <div className="text-center">
-                                        <div className="text-2xl font-mono font-bold">
+                                    <div className="flex-1">
+                                        <div className="text-lg font-mono font-bold">
                                             {formatTime(currentChunkTime)} / {formatTime(chunkDuration)}
                                         </div>
-                                        <div className="text-muted">
-                                            {isRecording ? `Recording Chunk ${currentChunkNumber}...` : "Ready to record"}
+                                        <div className="text-muted text-sm">
+                                            {isRecording ? `Chunk ${currentChunkNumber}` : "Ready"}
                                         </div>
                                         {isRecording && (
-                                            <div className="text-muted" style={{fontSize: '12px'}}>
-                                                Total: {formatTime(currentTime)} • {currentChunkRef.current} chunks uploaded
-                                            </div>
-                                        )}
-                                        {sessionIdRef.current && (
-                                            <div className="text-muted" style={{fontSize: '11px', marginTop: '4px'}}>
-                                                Session: {sessionIdRef.current}
+                                            <div className="text-muted text-xs">
+                                                Total: {formatTime(currentTime)} • {currentChunkRef.current} uploaded
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <span>Chunk Duration</span>
-                                        <span className="badge">{chunkDuration}s</span>
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between text-sm">
+                                        <span>Duration</span>
+                                        <span className="badge text-xs">{chunkDuration}s</span>
                                     </div>
                                     <input
                                         type="range"
@@ -691,33 +687,33 @@
                                         disabled={isRecording}
                                         style={{'--value': `${((chunkDuration - 5) / (300 - 5)) * 100}%`}}
                                     />
-                                    <div className="flex justify-between text-muted" style={{fontSize: '12px'}}>
+                                    <div className="flex justify-between text-muted text-xs">
                                         <span>5s</span>
                                         <span>5min</span>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Recordings List */}
-                            <div className="card p-4">
-                                <div className="flex items-center justify-between mb-4">
+                            {/* Recordings List - Compact */}
+                            <div className="card p-3">
+                                <div className="flex items-center justify-between mb-3">
                                     <div className="flex items-center gap-2">
-                                        <span>🎵</span>
-                                        <h2 className="text-lg font-bold">Current Session</h2>
-                                        <span className="badge">({recordings.length} chunks)</span>
+                                        <span style={{fontSize: '14px'}}>🎵</span>
+                                        <h2 className="text-base font-bold">Session</h2>
+                                        <span className="badge text-xs">({recordings.length})</span>
                                     </div>
                                     
                                     <select 
                                         className="select" 
                                         value={theme} 
                                         onChange={(e) => setTheme(e.target.value)}
-                                        style={{width: 'auto', fontSize: '12px', padding: '4px 8px'}}
+                                        style={{width: 'auto', fontSize: '11px', padding: '3px 6px'}}
                                     >
-                                        <option value="default">Clean Gray</option>
-                                        <option value="dark">Dark Mode</option>
-                                        <option value="purple">Purple Pro</option>
-                                        <option value="green">Nature Green</option>
-                                        <option value="blue">Ocean Blue</option>
+                                        <option value="default">Gray</option>
+                                        <option value="dark">Dark</option>
+                                        <option value="purple">Purple</option>
+                                        <option value="green">Green</option>
+                                        <option value="blue">Blue</option>
                                     </select>
                                 </div>
                                 
