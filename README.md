@@ -1,68 +1,54 @@
-# CloudDrive - Serverless Personal File Manager
+# CloudDrive with Audio Recording - Serverless Personal Cloud Platform
 
-A modern, secure personal file manager built with AWS serverless technologies. Upload, organize, and manage your files with a beautiful responsive interface that works seamlessly across all devices.
+A modern, secure personal cloud platform built with AWS serverless technologies. Features both file management and audio recording capabilities with a beautiful responsive interface optimized for mobile devices.
 
-<img width="1478" alt="CloudDrive Desktop Interface" src="https://github.com/user-attachments/assets/a6a5ecf4-49c8-4b7a-9444-9e19c8e838bf" />
-<img width="1386" alt="CloudDrive File Management" src="https://github.com/user-attachments/assets/b386a9ab-55e6-4d5e-bb6e-ebcaf64adf66" />
+## ✨ Key Features
 
-## ✨ Features
+### 🎤 **Audio Recording System**
+- **Real-time Recording**: High-quality audio recording with MediaRecorder API
+- **Chunked Upload**: Automatic chunking (5s-5min configurable) with S3 upload
+- **Session Management**: Organized audio sessions with metadata
+- **Mobile Optimized**: Touch-friendly interface designed for iPhone recording
+- **Resumable Uploads**: Built-in retry logic for failed chunks
 
-### 📁 Complete File Management
-- **Upload Files**: Drag-and-drop or click to upload files up to 100MB
-- **Folder Navigation**: Create and navigate through nested folder structures
-- **Rename**: Rename files and folders with validation
-- **Move**: Intuitive tree-view selector for moving files between folders
-- **Delete**: Safe deletion with confirmation prompts
-- **Download**: Secure pre-signed URL downloads
+### 📁 **Complete File Management**
+- **Secure Storage**: User-isolated S3 storage with JWT authentication
+- **Full CRUD Operations**: Upload, download, rename, move, delete files
+- **Folder Navigation**: Create and navigate nested folder structures
+- **Drag & Drop**: Modern file upload with progress tracking
 
-### 📱 Mobile-First Design
-- **Responsive UI**: Beautiful interface that adapts to any screen size
-- **iOS Action Sheets**: Native-feeling dropdown menus on iPhone/iPad
-- **Touch-Optimized**: Large touch targets and gesture-friendly interactions
-- **Mobile Navigation**: Compact breadcrumbs and optimized layout
-
-### 🔐 Enterprise-Grade Security
-- **AWS Cognito Authentication**: Secure user management with JWT tokens
-- **User Isolation**: Each user can only access their own files
-- **Pre-signed URLs**: Secure, time-limited download links
-- **HTTPS Everywhere**: All traffic encrypted via CloudFront
-
-### 🚀 Modern Architecture
-- **Serverless**: Zero-maintenance infrastructure that scales automatically
-- **Fast Performance**: CloudFront CDN for global content delivery
-- **Real-time Updates**: Instant UI updates after file operations
-
-## 🏗️ Architecture Overview
-
-![Architecture Diagram](https://d1.awsstatic.com/architecture-diagrams/ArchitectureDiagrams/serverless-webapp-architecture-diagram.8ae3844048f8e76c95f66d7dfd4dd33c961ec91d.png)
-
-- **Frontend Hosting**: Amazon S3 for storage + CloudFront for HTTPS delivery
-- **Authentication**: Amazon Cognito User Pools and Identity Pools
-- **Backend API**: AWS Lambda functions accessed via API Gateway
-- **File Storage**: S3 with user-scoped prefixes for security
-- **Deployment**: Serverless Framework with automated configuration
+### 📱 **Mobile-First Design**
+- **Responsive Dashboard**: Intuitive landing page with app selection
+- **iOS Optimizations**: Native action sheets and touch targets
+- **Compact UI**: Vertically optimized for maximum content visibility
+- **Cross-Device**: Seamless experience across desktop, tablet, mobile
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-
-- AWS CLI installed and configured
+- AWS CLI installed and configured with sufficient permissions
 - Node.js (v14+) and npm installed
-- Serverless Framework installed: `npm install -g serverless`
 - Git
 
-### 1. Clone and Deploy
-
+### 1. Clone and Setup
 ```bash
-git clone https://github.com/davidbmar/cognito-lambda-s3-webserver-cloudfront.git
-cd cognito-lambda-s3-webserver-cloudfront
-chmod +x deploy.sh
-./deploy.sh
+git clone https://github.com/davidbmar/audio-ui-cf-s3-lambda-cognito.git
+cd audio-ui-cf-s3-lambda-cognito
+chmod +x step-*.sh
 ```
 
-### 2. Create Your First User
-
+### 2. Deploy in Sequence
 ```bash
+./step-10-setup.sh           # Initial AWS setup and configuration
+./step-20-deploy-lambda.sh   # Deploy Lambda functions and infrastructure  
+./step-25-update-web-files.sh # Deploy web interface with configuration
+./step-45-validation.sh      # Validate deployment
+./step-47-test-apis.sh       # Test API endpoints
+```
+
+### 3. Create Your First User
+```bash
+# Get your User Pool ID from the output or .env file
 aws cognito-idp admin-create-user \
   --user-pool-id [YOUR_USER_POOL_ID] \
   --username your-email@example.com \
@@ -76,203 +62,172 @@ aws cognito-idp admin-set-user-password \
   --permanent
 ```
 
-### 3. Access Your App
+### 4. Access Your Applications
+After deployment, you'll receive URLs for:
+- **📁 File Manager**: `https://your-distribution.cloudfront.net`
+- **🎤 Audio Recorder**: `https://your-distribution.cloudfront.net/audio.html`
 
-After deployment, you'll get a CloudFront URL. Visit it and sign in with your credentials!
+## 🏗️ Architecture Overview
 
-## 🛠️ Technical Details
+### Core Components
+- **Frontend**: React-based SPA with in-browser Babel compilation
+- **Authentication**: AWS Cognito User Pools + Identity Pools
+- **API**: AWS Lambda functions via API Gateway
+- **Storage**: S3 with user-scoped prefixes (`users/{userId}/`)
+- **CDN**: CloudFront for global content delivery
+- **Audio Storage**: Organized as `users/{userId}/audio/sessions/{date-sessionId}/`
 
-### Required IAM Permissions
-
-The following AWS IAM permissions are needed to deploy this application:
-
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "s3:*",
-                "cloudformation:*",
-                "cloudfront:*",
-                "cognito-idp:*",
-                "cognito-identity:*",
-                "lambda:*",
-                "apigateway:*",
-                "iam:GetRole",
-                "iam:CreateRole",
-                "iam:DeleteRole",
-                "iam:PutRolePolicy",
-                "iam:AttachRolePolicy",
-                "iam:DeleteRolePolicy",
-                "iam:DetachRolePolicy",
-                "iam:PassRole"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
-```
-
-### API Endpoints
-
-The backend provides several secure API endpoints:
-
-- **GET /api/s3/list** - List user's files and folders
-- **POST /api/s3/upload-url** - Generate pre-signed upload URLs
-- **GET /api/s3/download/{key}** - Generate secure download URLs
-- **DELETE /api/s3/delete/{key}** - Delete files/folders
-- **POST /api/s3/rename** - Rename files/folders
-- **POST /api/s3/move** - Move files between folders
-
-### File Structure
-
-```
-├── web/
-│   ├── index.html          # Main application UI
-│   ├── app.js.template     # Frontend JavaScript (template)
-│   └── callback.html       # OAuth callback handler
-├── api/
-│   ├── handler.js          # Main API endpoints
-│   └── s3.js              # S3 file operations
-├── serverless.yml.template # Infrastructure configuration
-└── deploy.sh              # Automated deployment script
-```
-
-### Security Features
-
-1. **User Isolation**: Files are stored with `users/{userId}/` prefixes
-2. **Authentication**: All API calls require valid Cognito JWT tokens
-3. **Input Validation**: File names and paths are sanitized
-4. **Pre-signed URLs**: Secure, time-limited access to S3 objects
-5. **CORS Protection**: Proper CORS headers for web security
-
-## 📱 Mobile Optimizations
-
-### iOS Action Sheets
-On iPhone and iPad, dropdown menus use native-style action sheets that slide up from the bottom, providing a familiar iOS experience.
-
-### Responsive Design
-- Breadcrumb navigation automatically adapts to screen size
-- Touch targets are optimized for mobile interaction
-- Dropdowns and modals are repositioned to avoid viewport clipping
-
-### Performance
-- Lazy loading for large file lists
-- Optimized image handling for mobile networks
-- Minimal JavaScript bundle size
-
-## 🔧 Configuration
-
-The deployment script automatically configures all necessary settings:
-
-1. **Backend Deployment**: Creates all AWS resources via CloudFormation
-2. **Configuration Update**: Updates frontend with actual resource IDs
-3. **S3 Upload**: Deploys website files to S3
-4. **Cognito Setup**: Configures authentication URLs and policies
+### Audio Recording Flow
+1. User authenticates via Cognito
+2. MediaRecorder captures audio in configurable chunks
+3. Each chunk gets pre-signed S3 URL from Lambda
+4. Chunks upload directly to S3 with session metadata
+5. Real-time UI updates show upload progress and playback
 
 ## 🎯 Use Cases
 
-- **Personal Cloud Storage**: Secure alternative to public cloud services
-- **Team File Sharing**: Private file sharing within organizations
-- **Document Management**: Organize and access documents from anywhere
-- **Media Storage**: Store and organize photos, videos, and other media
-- **Backup Solution**: Secure cloud backup for important files
+### Personal Use
+- **Voice Memos**: Record thoughts, ideas, meeting notes
+- **Audio Journaling**: Daily audio logs with organized storage
+- **File Backup**: Secure personal cloud storage alternative
 
-## 🔄 Development Workflow
+### Professional Use  
+- **Interview Recording**: Journalist interviews with chunked backup
+- **Training Material**: Educational content with reliable upload
+- **Team Collaboration**: Shared audio notes and file storage
 
-### Making Changes
+### Technical Use
+- **Claude Memory Extension**: Audio storage for AI consciousness research
+- **Transcription Pipeline**: Whisper-ready audio format and organization
+- **Data Collection**: Structured audio data with metadata
 
-1. Edit `web/app.js.template` for frontend changes
-2. Edit `api/*.js` files for backend changes
-3. Run `./deploy.sh` to deploy updates
-4. The script automatically handles configuration updates
+## 🔧 Development
 
-### Local Testing
+### Numbered Step System
+The deployment uses a numbered step system for reliability:
+- **step-10**: Initial setup and configuration
+- **step-20**: Infrastructure deployment
+- **step-25**: Web file deployment with environment substitution
+- **step-45**: Audio-specific setup and validation
+- **step-47**: Comprehensive API testing
 
-For backend development:
-```bash
-serverless offline
+### Template System
+- **DO NOT** edit `web/app.js` or `web/audio.html` directly
+- **ALWAYS** edit `.template` files in `web/` directory
+- Run `./step-25-update-web-files.sh` to apply template changes
+
+### Key Files
+```
+├── api/
+│   ├── audio.js              # Audio recording Lambda functions
+│   ├── s3.js                 # File management operations
+│   └── data.js               # Basic API endpoints
+├── web/
+│   ├── index.html            # Dashboard and file manager
+│   ├── audio.html.template   # Audio recorder interface  
+│   ├── app.js.template       # Main application logic
+│   └── audio-ui-styles.css   # Audio-specific styling
+├── step-*.sh                 # Numbered deployment scripts
+├── CLAUDE.md                 # Development guide for Claude
+└── .env                      # Environment configuration
 ```
 
-For frontend development, serve the `web/` directory with any static server.
+## 📱 Mobile Optimizations
+
+### Audio Recording Mobile Features
+- **Collapsible Panels**: Test panels hide for mobile recording
+- **Touch Targets**: 36px+ buttons optimized for finger interaction
+- **Compact Layout**: Vertical optimization for more visible recordings
+- **Native Feel**: iOS action sheets for dropdown menus
+- **Scroll Prevention**: Fixed scroll jumping during audio playback
+
+### Responsive Design
+- **Dashboard Cards**: Clean app selection with feature highlights
+- **Adaptive Grid**: Single column on mobile, two columns on desktop
+- **Breadcrumb Navigation**: Smart truncation and mobile-friendly sizing
+
+## 🔐 Security Features
+
+### Audio-Specific Security
+- **User Isolation**: Audio files stored under `users/{userId}/audio/`
+- **Session Management**: Secure session IDs with timestamp prefixing
+- **Pre-signed URLs**: Time-limited (5min) upload/download access
+- **Chunk Validation**: Server-side verification of audio uploads
+
+### General Security
+- **JWT Authentication**: All API calls require valid Cognito tokens
+- **Input Sanitization**: File names and paths are sanitized
+- **CORS Protection**: Proper CORS headers for web security
+- **HTTPS Everywhere**: All traffic encrypted via CloudFront
 
 ## 🧹 Cleanup
 
-To avoid AWS charges, remove all resources when done:
-
+To remove all AWS resources and avoid charges:
 ```bash
-serverless remove
+./step-99-cleanup.sh
 ```
 
-This will delete all CloudFormation resources including S3 buckets (with all files), Lambda functions, API Gateway, Cognito pools, and CloudFront distribution.
+This will safely delete:
+- CloudFormation stack and all resources
+- S3 buckets (after emptying)
+- CloudFront distribution
+- Cognito User and Identity Pools
+- Lambda functions and log groups
+- Serverless deployment artifacts
 
-## 📊 Costs
+## 📊 Estimated Costs
 
-Typical monthly costs for light usage:
-- **S3 Storage**: $0.023/GB
+For typical personal use:
+- **S3 Storage**: ~$0.023/GB (audio files)
 - **Lambda**: First 1M requests free
-- **API Gateway**: First 1M requests free
+- **API Gateway**: First 1M requests free  
 - **CloudFront**: First 1TB transfer free
 - **Cognito**: First 50,000 MAUs free
 
-For most personal use cases, this will cost less than $5/month.
+Expected monthly cost: **$1-5** for personal use
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+### Common Audio Issues
+1. **Microphone Access Denied**: Check browser permissions
+2. **Upload Failures**: Verify network connection and retry logic
+3. **Missing Icons**: Clear CloudFront cache, check CSS loading
 
-1. **"Client does not exist" error**: 
-   - Verify the User Pool Client ID matches in app.js
-   - Check if CloudFront URL is set in Cognito User Pool Client
-
-2. **Upload failures**:
-   - Check file size (100MB limit)
-   - Verify S3 bucket permissions
-   - Check browser console for detailed errors
-
-3. **Authentication fails**:
-   - Ensure user exists in Cognito User Pool
-   - Check password meets complexity requirements
-   - Verify callback URLs in Cognito configuration
-
-4. **Mobile dropdown issues**:
-   - Clear browser cache
-   - Try different mobile browsers
-   - Check for JavaScript errors in console
+### General Issues
+1. **Authentication Failures**: Verify Cognito configuration in templates
+2. **API Errors**: Check CloudWatch logs for Lambda functions
+3. **Template Issues**: Ensure environment variables in `.env` are correct
 
 ### Debug Tools
-
-- **CloudWatch Logs**: Monitor Lambda function execution
-- **Browser DevTools**: Inspect network requests and console errors
-- **Serverless Logs**: `serverless logs -f functionName`
+- **Browser Console**: Check for JavaScript errors
+- **CloudWatch Logs**: Monitor Lambda execution
+- **Audio Debug Panel**: Built-in logging and export functionality
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly on both desktop and mobile
+2. Create a feature branch  
+3. Edit `.template` files (not generated files)
+4. Test on both desktop and mobile
 5. Submit a pull request
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## 🙏 Built With
 
-Built with:
-- [AWS Serverless Framework](https://www.serverless.com/)
-- [Amazon Cognito](https://aws.amazon.com/cognito/)
-- [AWS Lambda](https://aws.amazon.com/lambda/)
-- [Amazon CloudFront](https://aws.amazon.com/cloudfront/)
-- [Amazon S3](https://aws.amazon.com/s3/)
+- **AWS Services**: Lambda, S3, Cognito, CloudFront, API Gateway
+- **Frontend**: React 18, Babel (in-browser), MediaRecorder API
+- **Infrastructure**: Serverless Framework, CloudFormation
+- **Audio**: WebM/Opus encoding for Whisper compatibility
 
-## 📚 Reference Documentation
+## 📚 Additional Documentation
 
-- [Serverless Framework Documentation](https://www.serverless.com/framework/docs/)
-- [Amazon Cognito Documentation](https://docs.aws.amazon.com/cognito/latest/developerguide/what-is-amazon-cognito.html)
-- [AWS Lambda Documentation](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html)
-- [Amazon CloudFront Documentation](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Introduction.html)
-- [Amazon S3 Documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html)
+- **[CLAUDE.md](CLAUDE.md)**: Comprehensive development guide
+- **[AUDIO-RECORDING-SETUP.md](AUDIO-RECORDING-SETUP.md)**: Audio system documentation
+- **AWS Documentation**: [Serverless](https://serverless.com/), [Cognito](https://docs.aws.amazon.com/cognito/), [S3](https://docs.aws.amazon.com/s3/)
+
+---
+
+**🎤 Ready to start recording?** Follow the Quick Start guide and you'll have a full-featured audio recording platform running in minutes!
