@@ -3,26 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Audio Recorder Pro - Two Column Layout</title>
+    <title>Audio Recorder - CloudDrive</title>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <link rel="stylesheet" href="audio-ui-styles.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="root"></div>
-    <div id="debug-log" class="debug-log"></div>
-    <div id="test-panel" class="test-panel">
-        <h4>Test Panel</h4>
-        <button onclick="window.testRecord()">🎤 Test Record 10s</button><br>
-        <button onclick="window.testPlayback()">▶️ Test Playback</button><br>
-        <button onclick="window.clearDebug()">🗑️ Clear Debug</button><br>
-        <button onclick="window.exportLogs()">📋 Copy Logs</button><br>
-        <small>Two-column layout</small>
+    <div id="debug-log" class="debug-log collapsed"></div>
+    <div id="test-panel" class="test-panel collapsed">
+        <div class="panel-header" onclick="toggleTestPanel()">
+            <h4>Test Panel</h4>
+            <span class="toggle-btn">▼</span>
+        </div>
+        <div class="panel-content">
+            <button onclick="window.testRecord()">🎤 Test Record 10s</button><br>
+            <button onclick="window.testPlayback()">▶️ Test Playback</button><br>
+            <button onclick="window.clearDebug()">🗑️ Clear Debug</button><br>
+            <button onclick="window.exportLogs()">📋 Copy Logs</button><br>
+            <button onclick="toggleDebugLog()">👁️ Toggle Debug Log</button><br>
+            <small>Authenticated Audio</small>
+        </div>
     </div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
+
+        // Configuration - to be updated after deployment
+        const config = {
+            userPoolId: 'YOUR_USER_POOL_ID',
+            userPoolClientId: 'YOUR_USER_POOL_CLIENT_ID',
+            identityPoolId: 'YOUR_IDENTITY_POOL_ID',
+            region: 'YOUR_REGION',
+            apiUrl: 'YOUR_CLOUDFRONT_API_ENDPOINT',
+            audioApiUrl: 'YOUR_AUDIO_API_ENDPOINT',
+            appUrl: 'YOUR_CLOUDFRONT_URL'
+        };
 
         // Debug logging
         window.debugLogs = [];
@@ -39,7 +57,31 @@
             }
         };
 
-        // Test functions accessible globally
+        // Panel toggle functions
+        window.toggleTestPanel = () => {
+            const panel = document.getElementById('test-panel');
+            const toggleBtn = panel.querySelector('.toggle-btn');
+            
+            if (panel.classList.contains('collapsed')) {
+                panel.classList.remove('collapsed');
+                toggleBtn.textContent = '▲';
+            } else {
+                panel.classList.add('collapsed');
+                toggleBtn.textContent = '▼';
+            }
+        };
+
+        window.toggleDebugLog = () => {
+            const debugLog = document.getElementById('debug-log');
+            
+            if (debugLog.classList.contains('collapsed')) {
+                debugLog.classList.remove('collapsed');
+            } else {
+                debugLog.classList.add('collapsed');
+            }
+        };
+
+        // Test functions
         window.clearDebug = () => {
             document.getElementById('debug-log').innerHTML = '';
             window.debugLogs = [];
@@ -52,7 +94,53 @@
             });
         };
 
-        // Simple icons as SVGs - smaller size
+        // Authentication helper functions
+        const getAuthToken = () => {
+            return localStorage.getItem('id_token');
+        };
+
+        const getUserFromToken = () => {
+            const token = getAuthToken();
+            if (!token) return null;
+            
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                return {
+                    email: payload.email,
+                    userId: payload.sub,
+                    name: payload.given_name || payload.email
+                };
+            } catch (error) {
+                log('Error parsing token: ' + error.message);
+                return null;
+            }
+        };
+
+        const makeAuthenticatedRequest = async (url, options = {}) => {
+            const token = getAuthToken();
+            if (!token) {
+                throw new Error('No authentication token found');
+            }
+
+            const headers = {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+
+            const response = await fetch(url, {
+                ...options,
+                headers
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            return response.json();
+        };
+
+        // Icons (same as original)
         const MicIcon = ({size = 24}) => (
             <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -94,15 +182,6 @@
             </svg>
         );
 
-        const HashIcon = ({size = 14}) => (
-            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="4" y1="9" x2="20" y2="9"/>
-                <line x1="4" y1="15" x2="20" y2="15"/>
-                <line x1="10" y1="3" x2="8" y2="21"/>
-                <line x1="16" y1="3" x2="14" y2="21"/>
-            </svg>
-        );
-
         const TrashIcon = ({size = 14}) => (
             <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="3,6 5,6 21,6"/>
@@ -110,11 +189,20 @@
             </svg>
         );
 
+        const CloudIcon = ({size = 14}) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+            </svg>
+        );
+
         function AudioRecorderApp() {
+            const [user, setUser] = useState(null);
             const [isRecording, setIsRecording] = useState(false);
             const [currentTime, setCurrentTime] = useState(0);
             const [chunkDuration, setChunkDuration] = useState(5);
             const [theme, setTheme] = useState('default');
+            const [uploadStatus, setUploadStatus] = useState({});
+            const [sessions, setSessions] = useState([]);
             
             // Audio recording state
             const mediaRecorderRef = useRef(null);
@@ -123,74 +211,110 @@
             const sessionStartRef = useRef(null);
             const currentChunkRef = useRef(0);
             const recordingSessionRef = useRef(null);
+            const sessionIdRef = useRef(null);
+            const chunksQueueRef = useRef([]);
             
-            const [recordings, setRecordings] = useState([
-                {
-                    id: "1",
-                    name: "Meeting Notes",
-                    duration: 125,
-                    size: 2.4,
-                    timestamp: new Date("2025-07-02T22:56:53"),
-                    chunkNumber: 1,
-                    tags: ["meeting", "work"],
-                    syncStatus: "synced",
-                },
-                {
-                    id: "2",
-                    name: "Voice Memo",
-                    duration: 45,
-                    size: 0.8,
-                    timestamp: new Date("2025-07-02T21:30:15"),
-                    chunkNumber: 2,
-                    tags: ["personal"],
-                    syncStatus: "syncing",
-                },
-            ]);
-            
+            const [recordings, setRecordings] = useState([]);
             const [playingId, setPlayingId] = useState(null);
 
+            // Check authentication on mount
             useEffect(() => {
-                log("App initialized - Two Column Layout");
-                // Check if MediaRecorder is supported
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    log("ERROR: getUserMedia not supported");
-                } else {
-                    log("getUserMedia is supported");
+                const currentUser = getUserFromToken();
+                if (!currentUser) {
+                    // Redirect to login
+                    window.location.href = '/';
+                    return;
                 }
                 
-                if (!window.MediaRecorder) {
-                    log("ERROR: MediaRecorder not supported");
-                } else {
-                    log("MediaRecorder is supported");
-                }
-
-                // Set up test functions
-                window.testRecord = () => {
-                    log("TEST: Starting 15-second test recording with 5s chunks");
-                    setChunkDuration(5);
-                    setTimeout(() => {
-                        handleRecord();
-                        // Auto-stop after 15 seconds for testing
-                        setTimeout(() => {
-                            if (isRecording) {
-                                handleRecord();
-                            }
-                        }, 15000);
-                    }, 100);
-                };
-
-                window.testPlayback = () => {
-                    log("TEST: Testing playback of most recent recording");
-                    if (recordings.length > 0) {
-                        const mostRecent = recordings[0];
-                        handlePlay(mostRecent.id);
-                    } else {
-                        log("TEST: No recordings to test playback");
-                    }
-                };
+                setUser(currentUser);
+                log(`Audio recorder initialized for user: ${currentUser.email}`);
+                
+                // Load previous sessions
+                loadSessions();
             }, []);
 
-            // Timer effect - counts continuously but triggers chunk creation
+            // Load user's audio sessions
+            const loadSessions = async () => {
+                try {
+                    const response = await makeAuthenticatedRequest(`${config.audioApiUrl}/sessions`);
+                    setSessions(response.sessions || []);
+                    log(`Loaded ${response.sessions?.length || 0} audio sessions`);
+                } catch (error) {
+                    log(`Error loading sessions: ${error.message}`);
+                }
+            };
+
+            // Generate session ID
+            const generateSessionId = () => {
+                const timestamp = Date.now();
+                const random = Math.random().toString(36).substring(2, 8);
+                return `session-${timestamp}-${random}`;
+            };
+
+            // Upload chunk to S3
+            const uploadChunk = async (chunkBlob, chunkNumber) => {
+                try {
+                    log(`Uploading chunk ${chunkNumber} (${chunkBlob.size} bytes)`);
+                    
+                    // Get pre-signed URL
+                    const uploadRequest = await makeAuthenticatedRequest(`${config.audioApiUrl}/upload-chunk`, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            sessionId: sessionIdRef.current,
+                            chunkNumber: chunkNumber,
+                            contentType: 'audio/webm',
+                            duration: chunkDuration
+                        })
+                    });
+
+                    // Upload to S3
+                    const uploadResponse = await fetch(uploadRequest.uploadUrl, {
+                        method: 'PUT',
+                        body: chunkBlob,
+                        headers: {
+                            'Content-Type': 'audio/webm'
+                        }
+                    });
+
+                    if (!uploadResponse.ok) {
+                        throw new Error(`Upload failed: ${uploadResponse.status}`);
+                    }
+
+                    // Update upload status
+                    setUploadStatus(prev => ({
+                        ...prev,
+                        [chunkNumber]: 'uploaded'
+                    }));
+
+                    log(`Chunk ${chunkNumber} uploaded successfully`);
+                    return true;
+                } catch (error) {
+                    log(`Error uploading chunk ${chunkNumber}: ${error.message}`);
+                    setUploadStatus(prev => ({
+                        ...prev,
+                        [chunkNumber]: 'failed'
+                    }));
+                    return false;
+                }
+            };
+
+            // Update session metadata
+            const updateSessionMetadata = async (metadata) => {
+                try {
+                    await makeAuthenticatedRequest(`${config.audioApiUrl}/session-metadata`, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            sessionId: sessionIdRef.current,
+                            metadata: metadata
+                        })
+                    });
+                    log('Session metadata updated');
+                } catch (error) {
+                    log(`Error updating metadata: ${error.message}`);
+                }
+            };
+
+            // Timer effect
             useEffect(() => {
                 let interval;
                 if (isRecording) {
@@ -200,7 +324,7 @@
                             
                             // Check if we need to create a new chunk
                             if (newTime > 0 && newTime % chunkDuration === 0) {
-                                log(`Chunk ${currentChunkRef.current + 1} completed at ${newTime}s - creating new chunk`);
+                                log(`Chunk ${currentChunkRef.current + 1} completed at ${newTime}s`);
                                 createChunkFromCurrentRecording();
                             }
                             
@@ -217,17 +341,6 @@
                 return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
             };
 
-            const formatDuration = (seconds) => {
-                if (seconds < 60) return `${seconds}s`;
-                const mins = Math.floor(seconds / 60);
-                const secs = seconds % 60;
-                return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-            };
-
-            const formatFileSize = (mb) => {
-                return mb < 1 ? `${(mb * 1000).toFixed(0)} KB` : `${mb.toFixed(1)} MB`;
-            };
-
             const createChunkFromCurrentRecording = async () => {
                 if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') {
                     log("ERROR: Cannot create chunk - MediaRecorder not recording");
@@ -235,11 +348,9 @@
                 }
 
                 try {
-                    // Stop current recorder to get the chunk
                     const chunks = [];
                     const oldRecorder = mediaRecorderRef.current;
                     
-                    // Create promise to wait for the chunk data
                     const chunkPromise = new Promise((resolve) => {
                         oldRecorder.ondataavailable = (event) => {
                             if (event.data.size > 0) {
@@ -252,42 +363,59 @@
                                 const audioBlob = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
                                 resolve(audioBlob);
                             } else {
-                                log("ERROR: No audio data in chunk");
                                 resolve(null);
                             }
                         };
                     });
 
-                    // Stop the old recorder
                     oldRecorder.stop();
-                    
-                    // Wait for the chunk
                     const audioBlob = await chunkPromise;
                     
                     if (audioBlob) {
-                        // Create the chunk recording
-                        const audioUrl = URL.createObjectURL(audioBlob);
                         const chunkNumber = currentChunkRef.current + 1;
+                        currentChunkRef.current = chunkNumber;
                         
+                        // Add to local recordings for playback
+                        const audioUrl = URL.createObjectURL(audioBlob);
                         const newRecording = {
-                            id: `${recordingSessionRef.current}-chunk-${chunkNumber}`,
-                            name: `${recordingSessionRef.current} (Chunk ${chunkNumber})`,
+                            id: `${sessionIdRef.current}-chunk-${chunkNumber}`,
+                            name: `${sessionIdRef.current} (Chunk ${chunkNumber})`,
                             duration: chunkDuration,
                             size: Number((audioBlob.size / (1024 * 1024)).toFixed(2)),
                             timestamp: new Date(),
                             chunkNumber: chunkNumber,
-                            tags: [],
-                            syncStatus: "local",
+                            sessionId: sessionIdRef.current,
+                            syncStatus: "uploading",
                             audioBlob,
                             audioUrl
                         };
                         
-                        log(`Chunk ${chunkNumber} created: ${audioBlob.size} bytes`);
                         setRecordings(prev => [newRecording, ...prev]);
-                        currentChunkRef.current = chunkNumber;
+                        
+                        // Upload chunk in background
+                        setUploadStatus(prev => ({
+                            ...prev,
+                            [chunkNumber]: 'uploading'
+                        }));
+                        
+                        uploadChunk(audioBlob, chunkNumber).then(success => {
+                            if (success) {
+                                setRecordings(prev => prev.map(r => 
+                                    r.id === newRecording.id 
+                                        ? { ...r, syncStatus: 'synced' }
+                                        : r
+                                ));
+                            } else {
+                                setRecordings(prev => prev.map(r => 
+                                    r.id === newRecording.id 
+                                        ? { ...r, syncStatus: 'failed' }
+                                        : r
+                                ));
+                            }
+                        });
                     }
 
-                    // Start a new recorder to continue recording
+                    // Start a new recorder if still recording
                     if (streamRef.current && isRecording) {
                         await startNewChunkRecording();
                     }
@@ -299,7 +427,6 @@
 
             const startNewChunkRecording = async () => {
                 try {
-                    // Check supported MIME types
                     const mimeTypes = [
                         'audio/webm;codecs=opus',
                         'audio/webm',
@@ -325,7 +452,6 @@
                         log(`MediaRecorder error: ${event.error}`);
                     };
                     
-                    // Start the new chunk recording
                     mediaRecorder.start();
                     log("New chunk recording started");
                     
@@ -344,14 +470,22 @@
                             autoGainControl: true
                         } 
                     });
-                    log("Microphone access granted");
-                    streamRef.current = stream;
                     
-                    recordingSessionRef.current = `Recording ${Date.now()}`;
+                    streamRef.current = stream;
+                    sessionIdRef.current = generateSessionId();
                     sessionStartRef.current = Date.now();
                     currentChunkRef.current = 0;
                     
+                    // Create initial session metadata
+                    await updateSessionMetadata({
+                        status: 'recording',
+                        chunkDuration: chunkDuration,
+                        createdAt: new Date().toISOString(),
+                        conversationContext: 'Voice recording session'
+                    });
+                    
                     await startNewChunkRecording();
+                    log(`Recording session ${sessionIdRef.current} initialized`);
                     return true;
                     
                 } catch (error) {
@@ -362,27 +496,33 @@
             };
 
             const handleRecord = async () => {
-                log(`Record button clicked, currently recording: ${isRecording}`);
-                
                 if (isRecording) {
                     log("Stopping recording...");
                     
                     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-                        // Create final chunk
                         await createChunkFromCurrentRecording();
                     }
                     
                     if (streamRef.current) {
                         streamRef.current.getTracks().forEach(track => {
                             track.stop();
-                            log("Audio track stopped");
                         });
                     }
+                    
+                    // Update final session metadata
+                    await updateSessionMetadata({
+                        status: 'completed',
+                        duration: currentTime,
+                        chunkCount: currentChunkRef.current,
+                        completedAt: new Date().toISOString()
+                    });
                     
                     setIsRecording(false);
                     setCurrentTime(0);
                     currentChunkRef.current = 0;
-                    recordingSessionRef.current = null;
+                    
+                    // Reload sessions
+                    loadSessions();
                     
                 } else {
                     log("Starting recording...");
@@ -390,34 +530,22 @@
                     if (initialized) {
                         setIsRecording(true);
                         setCurrentTime(0);
-                        log("Recording started successfully");
+                        setUploadStatus({});
                     }
                 }
             };
 
             const handlePlay = (id) => {
-                log(`Play button clicked for recording: ${id}`);
                 const recording = recordings.find(r => r.id === id);
-                
-                if (!recording) {
-                    log("ERROR: Recording not found");
-                    return;
-                }
-                
-                if (!recording.audioUrl) {
-                    log("ERROR: No audio URL for this recording");
-                    return;
-                }
+                if (!recording?.audioUrl) return;
                 
                 if (playingId === id) {
-                    log("Stopping current playback");
                     if (audioElementRef.current) {
                         audioElementRef.current.pause();
                         audioElementRef.current = null;
                     }
                     setPlayingId(null);
                 } else {
-                    log(`Starting playback of: ${recording.audioUrl}`);
                     if (audioElementRef.current) {
                         audioElementRef.current.pause();
                     }
@@ -425,38 +553,24 @@
                     const audio = new Audio(recording.audioUrl);
                     audioElementRef.current = audio;
                     
-                    audio.onloadstart = () => log("Audio loading started");
-                    audio.oncanplay = () => log("Audio can play");
-                    audio.onplay = () => log("Audio playback started");
                     audio.onended = () => {
-                        log("Audio playback ended");
-                        setPlayingId(null);
-                        audioElementRef.current = null;
-                    };
-                    audio.onerror = (e) => {
-                        log(`Audio playback error: ${e.message || 'Unknown error'}`);
                         setPlayingId(null);
                         audioElementRef.current = null;
                     };
                     
                     audio.play().then(() => {
-                        log("Audio.play() succeeded");
                         setPlayingId(id);
                     }).catch(error => {
-                        log(`Audio.play() failed: ${error.message}`);
+                        log(`Audio playback failed: ${error.message}`);
                         setPlayingId(null);
-                        audioElementRef.current = null;
                     });
                 }
             };
 
             const handleDelete = (id) => {
-                log(`Delete button clicked for recording: ${id} - deleting immediately`);
-                
                 const recording = recordings.find(r => r.id === id);
                 if (recording?.audioUrl) {
                     URL.revokeObjectURL(recording.audioUrl);
-                    log("Audio URL revoked");
                 }
                 
                 if (playingId === id) {
@@ -468,12 +582,40 @@
                 }
                 
                 setRecordings(prev => prev.filter(r => r.id !== id));
-                log("Recording deleted");
+            };
+
+            const getSyncStatusIcon = (syncStatus) => {
+                switch (syncStatus) {
+                    case 'synced': return <CheckIcon />;
+                    case 'uploading': return <CloudIcon />;
+                    case 'failed': return '❌';
+                    default: return '⏳';
+                }
+            };
+
+            const getSyncStatusColor = (syncStatus) => {
+                switch (syncStatus) {
+                    case 'synced': return '#22c55e';
+                    case 'uploading': return '#3b82f6';
+                    case 'failed': return '#ef4444';
+                    default: return '#6b7280';
+                }
             };
 
             const themeClass = theme === 'default' ? '' : theme === 'dark' ? 'dark' : `theme-${theme}`;
             const currentChunkTime = currentTime % chunkDuration;
             const currentChunkNumber = Math.floor(currentTime / chunkDuration) + 1;
+
+            if (!user) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center">
+                        <div className="text-center">
+                            <h1>Loading...</h1>
+                            <p>Checking authentication...</p>
+                        </div>
+                    </div>
+                );
+            }
 
             return (
                 <div className={`min-h-screen ${themeClass}`}>
@@ -482,9 +624,17 @@
                         <div className="flex items-center gap-2">
                             <span style={{color: '#22c55e'}}>●</span>
                             <span style={{fontSize: '14px', color: '#22c55e'}}>Online</span>
+                            <span style={{fontSize: '14px', marginLeft: '16px'}}>
+                                {user.email}
+                            </span>
                         </div>
-                        <div style={{fontSize: '14px'}}>
-                            15 MB / 100 MB
+                        <div className="flex items-center gap-4">
+                            <div style={{fontSize: '14px'}}>
+                                {sessions.length} sessions
+                            </div>
+                            <a href="/" className="btn btn-outline" style={{fontSize: '12px', padding: '4px 8px'}}>
+                                ← Back to Files
+                            </a>
                         </div>
                     </div>
 
@@ -514,7 +664,12 @@
                                         </div>
                                         {isRecording && (
                                             <div className="text-muted" style={{fontSize: '12px'}}>
-                                                Total: {formatTime(currentTime)} • {currentChunkRef.current} chunks saved
+                                                Total: {formatTime(currentTime)} • {currentChunkRef.current} chunks uploaded
+                                            </div>
+                                        )}
+                                        {sessionIdRef.current && (
+                                            <div className="text-muted" style={{fontSize: '11px', marginTop: '4px'}}>
+                                                Session: {sessionIdRef.current}
                                             </div>
                                         )}
                                     </div>
@@ -523,7 +678,7 @@
                                 <div className="space-y-4">
                                     <div className="flex items-center justify-between">
                                         <span>Chunk Duration</span>
-                                        <span className="badge">{formatDuration(chunkDuration)}</span>
+                                        <span className="badge">{chunkDuration}s</span>
                                     </div>
                                     <input
                                         type="range"
@@ -543,13 +698,13 @@
                                 </div>
                             </div>
 
-                            {/* Recordings List - Two Column Layout */}
+                            {/* Recordings List */}
                             <div className="card p-4">
                                 <div className="flex items-center justify-between mb-4">
                                     <div className="flex items-center gap-2">
-                                        <span>📁</span>
-                                        <h2 className="text-lg font-bold">Recordings</h2>
-                                        <span className="badge">({recordings.length} files)</span>
+                                        <span>🎵</span>
+                                        <h2 className="text-lg font-bold">Current Session</h2>
+                                        <span className="badge">({recordings.length} chunks)</span>
                                     </div>
                                     
                                     <select 
@@ -567,21 +722,21 @@
                                 </div>
                                 
                                 <div className="space-y-1">
-                                    {recordings.map((recording, index) => (
+                                    {recordings.map((recording) => (
                                         <div key={recording.id} className="recording-item">
-                                            {/* Column 1: Name and Date */}
                                             <div className="recording-col-left">
                                                 <div className="recording-name">{recording.name}</div>
                                                 <div className="recording-date">
-                                                    {recording.timestamp.toLocaleDateString()} {recording.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                    {recording.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                                 </div>
                                             </div>
                                             
-                                            {/* Column 2: Metadata and Actions */}
                                             <div className="recording-col-right">
                                                 <div className="recording-metadata">
-                                                    <CheckIcon size={14} />
-                                                    <span>{formatDuration(recording.duration)} • {formatFileSize(recording.size)} • #{recording.chunkNumber}</span>
+                                                    <span style={{color: getSyncStatusColor(recording.syncStatus)}}>
+                                                        {getSyncStatusIcon(recording.syncStatus)}
+                                                    </span>
+                                                    <span>{recording.duration}s • {(recording.size * 1000).toFixed(0)}KB</span>
                                                 </div>
                                                 <div className="recording-actions">
                                                     <button
@@ -589,12 +744,6 @@
                                                         onClick={() => handlePlay(recording.id)}
                                                     >
                                                         {playingId === recording.id ? <PauseIcon /> : <PlayIcon />}
-                                                    </button>
-                                                    <button className="btn btn-outline icon-btn">
-                                                        <EditIcon />
-                                                    </button>
-                                                    <button className="btn btn-outline icon-btn">
-                                                        <HashIcon />
                                                     </button>
                                                     <button 
                                                         className="btn btn-outline icon-btn"
@@ -614,7 +763,53 @@
             );
         }
 
-        ReactDOM.render(<AudioRecorderApp />, document.getElementById('root'));
+        // Initialize when page loads - try multiple approaches
+        function initializeApp() {
+            console.log('Initializing AudioRecorderApp...');
+            console.log('React available:', typeof React !== 'undefined');
+            console.log('ReactDOM available:', typeof ReactDOM !== 'undefined');
+            console.log('AudioRecorderApp available:', typeof AudioRecorderApp !== 'undefined');
+            console.log('Root element exists:', !!document.getElementById('root'));
+            
+            if (typeof React !== 'undefined' && typeof ReactDOM !== 'undefined' && typeof AudioRecorderApp !== 'undefined') {
+                try {
+                    ReactDOM.render(React.createElement(AudioRecorderApp), document.getElementById('root'));
+                    console.log('AudioRecorderApp rendered successfully');
+                } catch (error) {
+                    console.error('Error rendering AudioRecorderApp:', error);
+                }
+            } else {
+                console.log('Dependencies not ready, retrying in 500ms...');
+                setTimeout(initializeApp, 500);
+            }
+        }
+
+        // Try multiple initialization approaches
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeApp);
+        } else {
+            initializeApp();
+        }
+        
+        // Fallback initialization
+        setTimeout(initializeApp, 1000);
+
+        // Test functions
+        window.testRecord = () => {
+            log("TEST: Starting test recording");
+            setTimeout(() => {
+                const event = new MouseEvent('click', { bubbles: true });
+                document.querySelector('.btn-lg').dispatchEvent(event);
+            }, 100);
+        };
+
+        window.testPlayback = () => {
+            log("TEST: Testing playback");
+            const playButton = document.querySelector('.btn-outline');
+            if (playButton) {
+                playButton.click();
+            }
+        };
     </script>
 </body>
 </html>

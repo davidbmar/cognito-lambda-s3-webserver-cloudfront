@@ -215,6 +215,66 @@ functions:
           method: post
           cors: true
 
+  # Audio chunk upload function
+  uploadAudioChunk:
+    handler: api/audio.uploadChunk
+    environment:
+      S3_BUCKET_NAME: ${self:custom.s3Bucket}
+    events:
+      - http:
+          path: api/audio/upload-chunk
+          method: post
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+
+  # Audio session metadata function
+  updateAudioSessionMetadata:
+    handler: api/audio.updateSessionMetadata
+    environment:
+      S3_BUCKET_NAME: ${self:custom.s3Bucket}
+    events:
+      - http:
+          path: api/audio/session-metadata
+          method: post
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+
+  # List audio sessions function
+  listAudioSessions:
+    handler: api/audio.listSessions
+    environment:
+      S3_BUCKET_NAME: ${self:custom.s3Bucket}
+    events:
+      - http:
+          path: api/audio/sessions
+          method: get
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+
+  # Get failed chunks for batch retry
+  getFailedAudioChunks:
+    handler: api/audio.getFailedChunks
+    environment:
+      S3_BUCKET_NAME: ${self:custom.s3Bucket}
+    events:
+      - http:
+          path: api/audio/failed-chunks
+          method: get
+          cors: true
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId:
+              Ref: ApiGatewayAuthorizer
+
 resources:
   Resources:
     # API Gateway Authorizer
