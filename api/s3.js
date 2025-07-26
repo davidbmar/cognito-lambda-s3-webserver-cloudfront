@@ -2,6 +2,7 @@
 
 const AWS = require('aws-sdk');
 const s3 = new AWS.S3();
+const { createUploadEvent, createDeletionEvent, createMoveEvent } = require('./eventbridge-utils');
 
 module.exports.listObjects = async (event) => {
   try {
@@ -301,6 +302,15 @@ module.exports.getUploadUrl = async (event) => {
 
     console.log(`Generated upload URL for ${fileKey}`);
 
+    // Publish EventBridge event for upload URL generation
+    try {
+      const eventId = await createUploadEvent(userId, email, sanitizedFileName, fileKey, contentType, fileSize);
+      console.log(`Published upload event with ID: ${eventId}`);
+    } catch (eventError) {
+      // Don't fail the upload if event publishing fails
+      console.warn('Failed to publish upload event:', eventError.message);
+    }
+
     return {
       statusCode: 200,
       headers: {
@@ -396,6 +406,15 @@ module.exports.deleteObject = async (event) => {
     }).promise();
 
     console.log(`Successfully deleted: ${decodedKey}`);
+
+    // Publish EventBridge event for file deletion
+    try {
+      const eventId = await createDeletionEvent(userId, email, decodedKey);
+      console.log(`Published deletion event with ID: ${eventId}`);
+    } catch (eventError) {
+      // Don't fail the deletion if event publishing fails
+      console.warn('Failed to publish deletion event:', eventError.message);
+    }
 
     return {
       statusCode: 200,
@@ -606,6 +625,15 @@ module.exports.renameObject = async (event) => {
 
     console.log(`Successfully renamed from ${decodedOldKey} to ${newKey}`);
 
+    // Publish EventBridge event for file rename
+    try {
+      const eventId = await createMoveEvent(userId, email, decodedOldKey, newKey, 'renamed');
+      console.log(`Published rename event with ID: ${eventId}`);
+    } catch (eventError) {
+      // Don't fail the rename if event publishing fails
+      console.warn('Failed to publish rename event:', eventError.message);
+    }
+
     return {
       statusCode: 200,
       headers: {
@@ -800,6 +828,15 @@ module.exports.moveObject = async (event) => {
     }
 
     console.log(`Successfully moved from ${decodedSourceKey} to ${newKey}`);
+
+    // Publish EventBridge event for file move
+    try {
+      const eventId = await createMoveEvent(userId, email, decodedSourceKey, newKey, 'moved');
+      console.log(`Published move event with ID: ${eventId}`);
+    } catch (eventError) {
+      // Don't fail the move if event publishing fails
+      console.warn('Failed to publish move event:', eventError.message);
+    }
 
     return {
       statusCode: 200,

@@ -67,6 +67,12 @@ provider:
           Action:
             - s3:CopyObject
           Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/users/*"
+        
+        # EventBridge permissions for publishing events
+        - Effect: Allow
+          Action:
+            - events:PutEvents
+          Resource: "*"
 
 custom:
   s3Bucket: ${env:S3_BUCKET_NAME, '${self:service}-website-${sls:stage}-${aws:accountId}'}
@@ -89,6 +95,7 @@ functions:
     handler: api/s3.listObjects
     environment:
       S3_BUCKET_NAME: ${self:custom.s3Bucket}
+      EVENT_BUS_NAME: ${env:EVENT_BUS_NAME, 'default'}
     events:
       - http:
           path: api/s3/list
@@ -104,6 +111,7 @@ functions:
     handler: api/s3.getDownloadUrl
     environment:
       S3_BUCKET_NAME: ${self:custom.s3Bucket}
+      EVENT_BUS_NAME: ${env:EVENT_BUS_NAME, 'default'}
     events:
       - http:
           path: api/s3/download/{key+}
@@ -123,6 +131,7 @@ functions:
     handler: api/s3.getUploadUrl
     environment:
       S3_BUCKET_NAME: ${self:custom.s3Bucket}
+      EVENT_BUS_NAME: ${env:EVENT_BUS_NAME, 'default'}
     events:
       - http:
           path: api/s3/upload
@@ -138,6 +147,7 @@ functions:
     handler: api/s3.deleteObject
     environment:
       S3_BUCKET_NAME: ${self:custom.s3Bucket}
+      EVENT_BUS_NAME: ${env:EVENT_BUS_NAME, 'default'}
     events:
       - http:
           path: api/s3/delete/{key+}
@@ -157,6 +167,7 @@ functions:
     handler: api/s3.renameObject
     environment:
       S3_BUCKET_NAME: ${self:custom.s3Bucket}
+      EVENT_BUS_NAME: ${env:EVENT_BUS_NAME, 'default'}
     events:
       - http:
           path: api/s3/rename
@@ -172,6 +183,7 @@ functions:
     handler: api/s3.moveObject
     environment:
       S3_BUCKET_NAME: ${self:custom.s3Bucket}
+      EVENT_BUS_NAME: ${env:EVENT_BUS_NAME, 'default'}
     events:
       - http:
           path: api/s3/move
