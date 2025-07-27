@@ -4,6 +4,9 @@
 
 set -e # Exit on any error
 
+# Source the common sequence functions
+source ./script-sequence.sh
+
 # Welcome banner
 echo "=================================================="
 echo "   CloudFront Cognito Serverless Application     "
@@ -11,14 +14,13 @@ echo "              Web Files Update Script            "
 echo "=================================================="
 echo
 
-# Check if .env exists
-if [ ! -f .env ]; then
-    echo "❌ .env file not found. Please run step-20-deploy.sh first."
+# Display what this script does
+print_script_purpose
+
+# Load configuration using common function
+if ! load_config; then
     exit 1
 fi
-
-# Load environment variables
-source .env
 
 # Validate required variables
 if [ -z "$APP_NAME" ] || [ -z "$STAGE" ] || [ -z "$S3_BUCKET_NAME" ]; then
@@ -122,4 +124,9 @@ fi
 echo
 echo "⚠️ Note: It may take a few minutes for the CloudFront invalidation to complete."
 echo "⚠️ Changes should be visible in 1-2 minutes."
-echo "=================================================="
+
+# Update setup status
+update_setup_status
+
+# Print next steps using common function
+print_next_steps
