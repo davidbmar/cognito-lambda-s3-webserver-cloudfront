@@ -84,10 +84,42 @@ https://your-cloudfront-url.cloudfront.net/api/{service}/{endpoint}
 - **GET `/api/audio/failed-chunks`** - Get failed chunk uploads for retry
 
 ### EventBridge Integration
-File operations automatically publish events to EventBridge:
+File operations automatically publish events to EventBridge for orchestration and processing:
+
+#### Event Types Published:
+- **Upload Events**: `Audio Uploaded`, `Video Uploaded`, `Document Uploaded`
+- **Deletion Events**: `Audio Deleted`, `Video Deleted`, `Document Deleted`  
+- **Folder Events**: `Folder Created`, `Folder Deleted`
+
+#### Event Configuration:
 - **Event Bus:** `dev-application-events` (configurable via `EVENT_BUS_NAME`)
-- **Event Types:** Audio Uploaded, Video Uploaded, Document Uploaded, Audio Deleted, etc.
 - **Event Source:** `custom.upload-service`
+- **Event Detail**: Includes userId, fileId, S3 location, metadata, and file type
+
+#### Event Schema:
+```json
+{
+  "userId": "user-id",
+  "fileId": "generated-uuid",
+  "s3Location": {
+    "bucket": "bucket-name", 
+    "key": "users/userId/filename.ext"
+  },
+  "metadata": {
+    "contentType": "audio/mpeg",
+    "size": 1234567,
+    "format": "mp3",
+    "uploadTimestamp": "2025-01-27T12:00:00Z"
+  },
+  "userEmail": "user@example.com"
+}
+```
+
+#### Integration Points:
+- **File Upload**: S3 upload completion triggers EventBridge event
+- **File Deletion**: File/folder deletion triggers EventBridge event  
+- **Folder Creation**: New folder creation triggers EventBridge event
+- **Error Handling**: Event publishing failures don't block file operations
 
 ## Audio Recording System
 
@@ -109,6 +141,57 @@ File operations automatically publish events to EventBridge:
 - Large touch targets (40px buttons on mobile)
 - Scroll jumping prevention with CSS containment
 - Native iOS action sheets for dropdowns
+
+## File Manager Features
+
+### New Folder Creation
+The File Manager includes a "New Folder" button with full modal functionality:
+
+- **Location**: Between Dashboard and Upload Files buttons in the toolbar
+- **Functionality**: Opens a modal dialog with input validation
+- **Validation**: Checks for invalid characters, reserved names, and length limits
+- **Implementation**: Creates folders using S3 upload API with `.folder` marker files
+- **Navigation**: Folders are fully navigable with breadcrumb support
+
+### Folder Structure
+- **User Isolation**: All files stored under `users/{userId}/` in S3
+- **Folder Representation**: Folders created with hidden `.folder` marker files
+- **Navigation**: Click folders to navigate, use breadcrumbs to jump to parent directories
+- **Deletion**: Both files and folders can be deleted via dropdown menu
+
+## S3 Screenshot Download Utility
+
+For debugging and reviewing user screenshots, use the provided Python script:
+
+### Download Script Usage
+```bash
+# Download a screenshot by partial filename match
+python3 download-s3-file.py "12.33.41" --download-dir "/path/to/download"
+
+# The script will:
+# 1. Search for files matching the pattern in user S3 buckets
+# 2. Download the file to the specified directory
+# 3. Verify the download with file size and type information
+```
+
+### Prerequisites
+- AWS CLI configured with proper credentials
+- Python 3 with boto3 library
+- S3 bucket access permissions
+
+### Example
+```bash
+# Download the debug screenshot
+python3 download-s3-file.py "Screenshot 2025-07-27 at 12.33.41 AM.png" --download-dir "."
+
+# This will download to: ./Screenshot 2025-07-27 at 12.33.41 AM.png
+```
+
+### Script Features
+- **Fuzzy Search**: Finds files by partial name matching
+- **User Isolation**: Automatically searches within user directories
+- **Verification**: Confirms download success with file size validation
+- **Error Handling**: Provides clear error messages for common issues
 
 ## Troubleshooting
 
