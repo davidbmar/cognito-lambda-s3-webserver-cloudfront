@@ -3,6 +3,11 @@
 S3 File Downloader Script
 Searches for files in the S3 bucket and downloads them to a temp directory.
 Handles Unicode characters in filenames properly.
+
+Quick Usage:
+  python3 download-s3-file.py screenshot    # Downloads all files with "screenshot" in name
+  python3 download-s3-file.py "11.12"       # Downloads files with time pattern
+  python3 download-s3-file.py latest        # Downloads most recent file
 """
 
 import boto3
@@ -21,6 +26,9 @@ def normalize_filename(filename):
 def search_and_download_file(bucket_name, search_term, download_dir='/tmp'):
     """
     Search for files containing the search term and download them
+    Special search terms:
+    - 'latest' or 'recent': Downloads the most recently modified file
+    - 'screenshot': Case-insensitive search for screenshot files
     """
     s3 = boto3.client('s3')
     
@@ -29,6 +37,7 @@ def search_and_download_file(bucket_name, search_term, download_dir='/tmp'):
         paginator = s3.get_paginator('list_objects_v2')
         pages = paginator.paginate(Bucket=bucket_name)
         
+        all_files = []
         matching_files = []
         
         print(f"Searching for files containing '{search_term}' in bucket '{bucket_name}'...")
@@ -37,13 +46,31 @@ def search_and_download_file(bucket_name, search_term, download_dir='/tmp'):
             if 'Contents' in page:
                 for obj in page['Contents']:
                     key = obj['Key']
-                    # Search in the key (file path)
+                    file_info = {
+                        'key': key,
+                        'size': obj['Size'],
+                        'modified': obj['LastModified']
+                    }
+                    all_files.append(file_info)
+                    
+                    # Special handling for 'latest' search
+                    if search_term.lower() in ['latest', 'recent']:
+                        continue  # We'll handle this after collecting all files
+                    
+                    # Search in the key (file path) - case insensitive
                     if search_term.lower() in key.lower():
-                        matching_files.append({
-                            'key': key,
-                            'size': obj['Size'],
-                            'modified': obj['LastModified']
-                        })
+                        matching_files.append(file_info)
+        
+        # Handle special 'latest' search
+        if search_term.lower() in ['latest', 'recent']:
+            if all_files:
+                # Sort by modification time and get the most recent
+                latest_file = max(all_files, key=lambda x: x['modified'])
+                matching_files = [latest_file]
+                print(f"Found latest file: {latest_file['key']}")
+            else:
+                print("No files found in bucket")
+                return []
         
         if not matching_files:
             print(f"No files found matching '{search_term}'")

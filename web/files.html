@@ -698,6 +698,83 @@
             color: #d93025;
         }
 
+        /* Folder Creation Modal Styles */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        .folder-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.2s ease;
+            background: #fff;
+            box-sizing: border-box;
+        }
+
+        .folder-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .folder-input::placeholder {
+            color: #9ca3af;
+        }
+
+        .input-hint {
+            display: block;
+            margin-top: 6px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .folder-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .folder-actions .btn {
+            min-width: 120px;
+        }
+
+        /* Input validation states */
+        .folder-input.invalid {
+            border-color: #ef4444;
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+        }
+
+        .folder-input.valid {
+            border-color: #10b981;
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+        }
+
+        .error-message {
+            color: #ef4444;
+            font-size: 12px;
+            margin-top: 6px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
         .dropdown-item.danger:hover {
             background-color: #fce8e6;
         }
@@ -800,7 +877,7 @@
                                 <i class="fas fa-upload"></i>
                                 Upload Files
                             </button>
-                            <button class="btn btn-secondary" id="create-folder-btn" type="button" style="cursor: pointer;" onclick="console.log('Button clicked via onclick'); if(window.createFolder) window.createFolder(); else alert('createFolder not found');">
+                            <button class="btn btn-secondary" id="create-folder-btn" type="button">
                                 <i class="fas fa-folder-plus"></i>
                                 New Folder
                             </button>
@@ -850,6 +927,31 @@
         </div>
     </div>
 
+    <!-- Create Folder Modal -->
+    <div class="upload-modal" id="create-folder-modal" style="display: none;">
+        <div class="upload-modal-content" style="max-width: 400px;">
+            <div class="upload-modal-header">
+                <h3><i class="fas fa-folder-plus"></i> Create New Folder</h3>
+                <button class="close-modal" id="close-create-folder">&times;</button>
+            </div>
+            
+            <div style="padding: 20px;">
+                <div class="form-group">
+                    <label for="folder-name-input">Folder Name:</label>
+                    <input type="text" id="folder-name-input" class="folder-input" placeholder="Enter folder name..." maxlength="50">
+                    <small class="input-hint">Only letters, numbers, dots, and hyphens allowed</small>
+                </div>
+                
+                <div class="folder-actions">
+                    <button class="btn btn-secondary" id="cancel-folder">Cancel</button>
+                    <button class="btn btn-primary" id="confirm-create-folder">
+                        <i class="fas fa-plus"></i> Create Folder
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Navigation FAB - Audio Recorder -->
     <a href="/audio.html" class="nav-fab" title="Go to Audio Recorder">
         <i class="fas fa-microphone"></i>
@@ -861,25 +963,103 @@
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1000.0.min.js"></script>
     
     <script>
-        // Create new folder functionality - defined early for accessibility
-        window.createFolder = async function() {
-            console.log('createFolder function called');
-            const folderName = prompt('Enter folder name:');
-            if (!folderName || !folderName.trim()) {
-                console.log('No folder name provided or empty');
+        // Beautiful folder creation modal functionality
+        window.showCreateFolderModal = function() {
+            const modal = document.getElementById('create-folder-modal');
+            const input = document.getElementById('folder-name-input');
+            
+            // Reset the modal
+            input.value = '';
+            input.classList.remove('invalid', 'valid');
+            hideErrorMessage();
+            
+            // Show the modal
+            modal.style.display = 'flex';
+            
+            // Focus the input after a brief delay to ensure modal is visible
+            setTimeout(() => {
+                input.focus();
+            }, 100);
+        };
+
+        window.hideCreateFolderModal = function() {
+            const modal = document.getElementById('create-folder-modal');
+            modal.style.display = 'none';
+        };
+
+        function validateFolderName(name) {
+            if (!name || !name.trim()) {
+                return { valid: false, message: 'Folder name cannot be empty' };
+            }
+            
+            if (name.length > 50) {
+                return { valid: false, message: 'Folder name must be 50 characters or less' };
+            }
+            
+            // Check for invalid characters
+            const invalidChars = /[^a-zA-Z0-9.\-_\s]/;
+            if (invalidChars.test(name)) {
+                return { valid: false, message: 'Only letters, numbers, dots, hyphens, underscores, and spaces allowed' };
+            }
+            
+            // Check for reserved names
+            const reserved = ['con', 'aux', 'prn', 'nul', 'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9', 'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9'];
+            if (reserved.includes(name.toLowerCase())) {
+                return { valid: false, message: 'This is a reserved folder name' };
+            }
+            
+            return { valid: true };
+        }
+
+        function showErrorMessage(message) {
+            const input = document.getElementById('folder-name-input');
+            let errorDiv = input.parentNode.querySelector('.error-message');
+            
+            if (!errorDiv) {
+                errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                input.parentNode.appendChild(errorDiv);
+            }
+            
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+            input.classList.add('invalid');
+            input.classList.remove('valid');
+        }
+
+        function hideErrorMessage() {
+            const input = document.getElementById('folder-name-input');
+            const errorDiv = input.parentNode.querySelector('.error-message');
+            
+            if (errorDiv) {
+                errorDiv.classList.remove('show');
+            }
+            
+            input.classList.remove('invalid');
+        }
+
+        async function createFolderFromModal() {
+            const input = document.getElementById('folder-name-input');
+            const createBtn = document.getElementById('confirm-create-folder');
+            const folderName = input.value.trim();
+            
+            // Validate input
+            const validation = validateFolderName(folderName);
+            if (!validation.valid) {
+                showErrorMessage(validation.message);
                 return;
             }
-            console.log('Creating folder:', folderName);
 
-            const sanitizedName = folderName.trim().replace(/[^a-zA-Z0-9.-]/g, '_');
-            if (sanitizedName !== folderName.trim()) {
-                alert('Folder name has been sanitized to: ' + sanitizedName);
-            }
-
-            const currentPath = window.currentPath || '';
-            const fullPath = currentPath ? `${currentPath}${sanitizedName}/` : `${sanitizedName}/`;
+            // Show loading state
+            createBtn.disabled = true;
+            createBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
 
             try {
+                // Sanitize folder name for S3
+                const sanitizedName = folderName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9.\-_]/g, '');
+                const currentPath = window.currentPath || '';
+                const fullPath = currentPath ? `${currentPath}${sanitizedName}/` : `${sanitizedName}/`;
+
                 const token = localStorage.getItem('id_token');
                 if (!token) {
                     throw new Error('Authentication token not found');
@@ -919,19 +1099,25 @@
 
                 console.log('Folder created successfully:', fullPath);
                 
+                // Hide modal
+                window.hideCreateFolderModal();
+                
                 // Refresh file list to show the new folder
                 if (typeof listS3Files === 'function') {
                     await listS3Files();
                 } else {
-                    console.log('listS3Files function not available, reloading page');
                     window.location.reload();
                 }
                 
             } catch (error) {
                 console.error('Error creating folder:', error);
-                alert(`Failed to create folder: ${error.message}`);
+                showErrorMessage(`Failed to create folder: ${error.message}`);
+            } finally {
+                // Reset button state
+                createBtn.disabled = false;
+                createBtn.innerHTML = '<i class="fas fa-plus"></i> Create Folder';
             }
-        };
+        }
 
         // Auto-load file manager on page load
         document.addEventListener('DOMContentLoaded', function() {
@@ -1042,22 +1228,68 @@
                 });
             }
 
-            // Create folder button
+            // Create folder button - show beautiful modal
             const createFolderBtn = document.getElementById('create-folder-btn');
             if (createFolderBtn) {
-                console.log('Create folder button found, adding event listener');
                 createFolderBtn.addEventListener('click', function(e) {
-                    console.log('Create folder button clicked');
                     e.preventDefault();
-                    if (typeof window.createFolder === 'function') {
-                        console.log('createFolder function exists, calling it');
-                        window.createFolder();
-                    } else {
-                        console.error('createFolder function not found');
+                    e.stopPropagation(); // Prevent any event bubbling
+                    window.showCreateFolderModal();
+                });
+            }
+
+            // Modal event listeners
+            const createFolderModal = document.getElementById('create-folder-modal');
+            const closeFolderModal = document.getElementById('close-create-folder');
+            const cancelFolderBtn = document.getElementById('cancel-folder');
+            const confirmCreateBtn = document.getElementById('confirm-create-folder');
+            const folderNameInput = document.getElementById('folder-name-input');
+
+            // Close modal handlers
+            if (closeFolderModal) {
+                closeFolderModal.addEventListener('click', window.hideCreateFolderModal);
+            }
+            if (cancelFolderBtn) {
+                cancelFolderBtn.addEventListener('click', window.hideCreateFolderModal);
+            }
+
+            // Click outside modal to close
+            if (createFolderModal) {
+                createFolderModal.addEventListener('click', function(e) {
+                    if (e.target === createFolderModal) {
+                        window.hideCreateFolderModal();
                     }
                 });
-            } else {
-                console.error('Create folder button not found!');
+            }
+
+            // Create folder on button click
+            if (confirmCreateBtn) {
+                confirmCreateBtn.addEventListener('click', createFolderFromModal);
+            }
+
+            // Create folder on Enter key
+            if (folderNameInput) {
+                folderNameInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        createFolderFromModal();
+                    }
+                });
+
+                // Real-time validation
+                folderNameInput.addEventListener('input', function() {
+                    const validation = validateFolderName(this.value);
+                    if (validation.valid) {
+                        this.classList.remove('invalid');
+                        this.classList.add('valid');
+                        hideErrorMessage();
+                    } else if (this.value.trim()) {
+                        showErrorMessage(validation.message);
+                    } else {
+                        this.classList.remove('invalid', 'valid');
+                        hideErrorMessage();
+                    }
+                });
             }
 
             // Upload queue buttons
