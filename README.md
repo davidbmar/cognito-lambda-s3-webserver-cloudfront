@@ -1,6 +1,6 @@
 # CloudDrive with Audio Recording - Serverless Personal Cloud Platform
 
-A modern, secure personal cloud platform built with AWS serverless technologies. Features both file management and audio recording capabilities with a beautiful responsive interface optimized for mobile devices.
+A modern, secure personal cloud platform built with AWS serverless technologies. Features file management, audio recording, and EventBridge integration with a beautiful responsive interface optimized for mobile devices.
 
 ## ✨ Key Features
 
@@ -16,6 +16,13 @@ A modern, secure personal cloud platform built with AWS serverless technologies.
 - **Full CRUD Operations**: Upload, download, rename, move, delete files
 - **Folder Navigation**: Create and navigate nested folder structures
 - **Drag & Drop**: Modern file upload with progress tracking
+- **EventBridge Integration**: Publishes file operation events for orchestration
+
+### 🔌 **Event-Driven Architecture**
+- **EventBridge Events**: Auto-published for all file operations (upload, delete, rename, move)
+- **Event Bus**: Configurable event bus (`dev-application-events` by default)
+- **Event Schema**: Structured events with user ID, file metadata, and S3 location
+- **Orchestration Ready**: Integrates with external event processing systems
 
 ### 📱 **Mobile-First Design**
 - **Responsive Dashboard**: Intuitive landing page with app selection
@@ -40,11 +47,16 @@ chmod +x step-*.sh
 ### 2. Deploy in Sequence
 ```bash
 ./step-10-setup.sh           # Initial AWS setup and configuration
-./step-20-deploy-lambda.sh   # Deploy Lambda functions and infrastructure  
-./step-25-update-web-files.sh # Deploy web interface with configuration
-./step-45-validation.sh      # Validate deployment
-./step-47-test-apis.sh       # Test API endpoints
+./step-20-deploy.sh          # Deploy Lambda functions and infrastructure (smart bucket handling)
+./step-25-update-web-files.sh # Deploy web interface with auto-configured endpoints
+./step-30-create-user.sh     # Create test Cognito user (optional)
 ```
+
+**🎯 Smart Deployment Features:**
+- **Bucket Detection**: Automatically handles existing vs new S3 buckets
+- **Auto-Configuration**: AUDIO_API_ENDPOINT and other endpoints set automatically
+- **Permission Management**: Cognito IAM roles configured with proper S3 access
+- **Safe Cleanup**: `./step-99-cleanup.sh` preserves existing buckets by default
 
 ### 3. Create Your First User
 ```bash
@@ -106,15 +118,34 @@ After deployment, you'll receive URLs for:
 ### Numbered Step System
 The deployment uses a numbered step system for reliability:
 - **step-10**: Initial setup and configuration
-- **step-20**: Infrastructure deployment
+- **step-20**: Infrastructure deployment with smart bucket handling
 - **step-25**: Web file deployment with environment substitution
+- **step-30**: Create test Cognito users
 - **step-45**: Audio-specific setup and validation
 - **step-47**: Comprehensive API testing
+- **step-99**: Safe cleanup (preserves existing buckets)
 
 ### Template System
 - **DO NOT** edit `web/app.js` or `web/audio.html` directly
 - **ALWAYS** edit `.template` files in `web/` directory
 - Run `./step-25-update-web-files.sh` to apply template changes
+
+### EventBridge Integration
+All file operations automatically publish structured events:
+```json
+{
+  "source": "cloudDrive.fileManager",
+  "detail-type": "File Operation",
+  "detail": {
+    "operation": "upload|delete|rename|move",
+    "userId": "user-uuid",
+    "fileName": "example.jpg",
+    "s3Key": "users/user-uuid/example.jpg",
+    "bucketName": "your-bucket",
+    "timestamp": "2025-01-15T10:30:00Z"
+  }
+}
+```
 
 ### Key Files
 ```

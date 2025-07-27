@@ -3,13 +3,15 @@
 ## Project Overview
 This is a serverless CloudDrive application with integrated audio recording capabilities for extending Claude's memory and consciousness through persistent audio storage.
 
-**Core Technologies:** AWS Lambda, S3, Cognito, CloudFront, React (in-browser), MediaRecorder API
+**Core Technologies:** AWS Lambda, S3, Cognito, CloudFront, React (in-browser), MediaRecorder API, EventBridge
 
 ## Key Features
 - **File Management:** Secure user-isolated S3 storage with CloudFront delivery
 - **Audio Recording:** Real-time chunked audio recording (5s-5min chunks) with S3 upload
-- **Authentication:** AWS Cognito with JWT tokens
+- **Authentication:** AWS Cognito with JWT tokens and IAM roles
+- **EventBridge Integration:** Publishes file operation events for orchestration
 - **Mobile Optimized:** Touch-friendly UI for iPhone testing
+- **Smart Deployment:** Handles both existing and new S3 bucket scenarios
 - **Memory System:** Designed for future transcription and consciousness features
 
 ## Development Commands
@@ -22,10 +24,10 @@ npm run typecheck
 
 # Deploy in sequence (numbered step system)
 ./step-10-setup.sh           # Initial AWS setup
-./step-20-deploy-lambda.sh   # Deploy Lambda functions  
+./step-20-deploy.sh          # Deploy Lambda functions + infrastructure
 ./step-25-update-web-files.sh # Deploy web files with env substitution
-./step-45-validation.sh      # Validate deployment
-./step-47-test-apis.sh       # Test API endpoints
+./step-30-create-user.sh     # Create test Cognito user (optional)
+./step-99-cleanup.sh         # Intelligent cleanup (preserves existing buckets)
 ```
 
 ### Template System:
@@ -37,9 +39,10 @@ npm run typecheck
 
 ### Lambda Functions (`api/` directory):
 - `api/audio.js` - Audio chunk upload, session metadata, chunk verification
-- `api/data.js` - Basic API test endpoint
-- `api/s3.js` - File operations (list, upload, download, delete, rename, move)
+- `api/data.js` - Basic API test endpoint  
+- `api/s3.js` - File operations (list, upload, download, delete, rename, move) + EventBridge events
 - `api/memory.js` - Memory storage for future consciousness features
+- `api/eventbridge-utils.js` - EventBridge event publishing utilities
 
 ### Web Application (`web/` directory):
 - `index.html` - Main file manager interface
@@ -53,15 +56,47 @@ npm run typecheck
 - **Chunked Audio:** Recording split into configurable chunks (5s-5min)
 - **Template Deployment:** Environment variables injected during deployment
 - **Mobile-First:** Touch targets, action sheets, scroll prevention
+- **Event-Driven:** File operations publish EventBridge events for orchestration
+- **Smart Infrastructure:** Automatically handles existing vs new S3 buckets
+- **Secure Access:** CloudFront + S3 bucket policies + Cognito IAM roles
+
+## API Architecture
+
+### Endpoint Structure
+All APIs are accessed through CloudFront for security and caching:
+```
+https://your-cloudfront-url.cloudfront.net/api/{service}/{endpoint}
+```
+
+### File Management APIs (`/api/s3/*`)
+- **GET `/api/s3/list`** - List user's files
+- **POST `/api/s3/upload`** - Get pre-signed URL for file upload
+- **GET `/api/s3/download/{key+}`** - Get pre-signed URL for file download
+- **DELETE `/api/s3/delete/{key+}`** - Delete file
+- **POST `/api/s3/rename`** - Rename file
+- **POST `/api/s3/move`** - Move file to different folder
+
+### Audio Recording APIs (`/api/audio/*`)
+- **POST `/api/audio/upload-chunk`** - Get pre-signed URL for audio chunk upload
+- **POST `/api/audio/session-metadata`** - Store/update recording session metadata
+- **GET `/api/audio/sessions`** - List user's audio recording sessions
+- **GET `/api/audio/failed-chunks`** - Get failed chunk uploads for retry
+
+### EventBridge Integration
+File operations automatically publish events to EventBridge:
+- **Event Bus:** `dev-application-events` (configurable via `EVENT_BUS_NAME`)
+- **Event Types:** Audio Uploaded, Video Uploaded, Document Uploaded, Audio Deleted, etc.
+- **Event Source:** `custom.upload-service`
 
 ## Audio Recording System
 
 ### How It Works:
 1. User authenticates via Cognito
 2. MediaRecorder API captures audio in chunks
-3. Each chunk gets pre-signed S3 URL from Lambda
+3. Each chunk gets pre-signed S3 URL from `/api/audio/upload-chunk`
 4. Chunks upload to `users/{userId}/audio/sessions/{date-sessionId}/`
-5. Metadata stored for future transcription/processing
+5. Session metadata stored via `/api/audio/session-metadata`
+6. EventBridge events published for each uploaded chunk
 
 ### Key Files:
 - `api/audio.js` - Lambda functions for upload URLs and metadata
@@ -78,9 +113,11 @@ npm run typecheck
 
 ### Common Issues:
 1. **404 on CloudFront URL:** Check Cognito domain in template, run step-25
-2. **Audio upload 500 errors:** Verify AUDIO_API_ENDPOINT in .env, check Lambda logs
-3. **React not rendering:** Check browser console, try refreshing, verify template substitution
-4. **Icons not showing:** Clear CloudFront cache, check CSS containment rules
+2. **Audio upload JSON errors:** AUDIO_API_ENDPOINT not set - run step-20-deploy.sh to auto-configure
+3. **S3 bucket conflicts:** Bucket already exists in another stack - deployment script handles this automatically
+4. **S3 upload 403 errors:** Check Cognito authenticated role has S3UserDataAccess policy
+5. **React not rendering:** Check browser console, try refreshing, verify template substitution
+6. **Icons not showing:** Clear CloudFront cache, check CSS containment rules
 
 ### Debugging:
 - Check CloudWatch logs for Lambda functions
@@ -104,19 +141,62 @@ npm run typecheck
 
 ## Environment Variables
 
-### Required in .env:
+### Auto-Generated During Deployment:
+Most environment variables are automatically set by the deployment scripts:
+
 ```bash
-AWS_REGION=us-east-2
+# Set during step-10-setup.sh
+APP_NAME=your-app-name
 S3_BUCKET_NAME=your-bucket-name
-CLOUDFRONT_DISTRIBUTION_ID=your-distribution-id
+COGNITO_DOMAIN=your-domain-prefix
+
+# Auto-populated during step-20-deploy.sh
+API_ENDPOINT=https://your-api.execute-api.region.amazonaws.com/dev/api/data
 CLOUDFRONT_URL=https://your-distribution.cloudfront.net
-API_GATEWAY_URL=https://your-api.execute-api.region.amazonaws.com/dev
-AUDIO_API_ENDPOINT=https://your-api.execute-api.region.amazonaws.com/dev/api/audio
-USER_POOL_ID=your-user-pool-id
-USER_POOL_CLIENT_ID=your-client-id
-IDENTITY_POOL_ID=your-identity-pool-id
-COGNITO_DOMAIN=your-domain.auth.region.amazoncognito.com
+CLOUDFRONT_API_ENDPOINT=https://your-distribution.cloudfront.net/api/data
+AUDIO_API_ENDPOINT=https://your-distribution.cloudfront.net/api/audio
+USER_POOL_ID=us-east-2_xxxxxxxxx
+USER_POOL_CLIENT_ID=xxxxxxxxxxxxxxxxxx
+IDENTITY_POOL_ID=us-east-2:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# EventBridge Configuration
+EVENT_BUS_NAME=dev-application-events
 ```
+
+### Manual Configuration (Optional):
+```bash
+# Only needed for custom EventBridge integration
+EVENT_BUS_NAME=your-custom-event-bus
+```
+
+## Deployment Features
+
+### Smart S3 Bucket Handling
+The deployment script automatically detects and handles both scenarios:
+
+**Existing Bucket:**
+- Skips bucket creation in CloudFormation
+- Updates serverless.yml to use existing bucket name
+- Applies CloudFront bucket policy manually
+- Preserves all existing data
+
+**New Bucket:**
+- Creates bucket via CloudFormation  
+- Sets up bucket policy automatically
+- Configures CORS and website hosting
+
+### Intelligent Cleanup
+The cleanup script (`step-99-cleanup.sh`) provides smart bucket preservation:
+- Detects if bucket was created by this CloudFormation stack
+- Warns if bucket existed before deployment
+- Prompts user with different messages based on bucket origin
+- Defaults to preserving existing buckets to protect data
+
+### IAM Permissions
+Cognito authenticated users get proper S3 permissions via CloudFormation:
+- `S3UserDataAccess` inline policy for user file operations
+- Scoped to `users/{userId}/*` path for security
+- Includes upload, download, delete, and list permissions
 
 ## Future Enhancements
 - Whisper transcription integration
