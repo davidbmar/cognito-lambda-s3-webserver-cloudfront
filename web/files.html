@@ -775,6 +775,88 @@
             display: block;
         }
 
+        /* Delete Confirmation Modal Styles */
+        .delete-warning {
+            text-align: center;
+        }
+
+        .delete-warning p {
+            margin-bottom: 16px;
+            color: #374151;
+            font-size: 16px;
+        }
+
+        .file-to-delete {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 16px 20px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .file-to-delete i {
+            color: #6b7280;
+            font-size: 18px;
+        }
+
+        .warning-text {
+            font-size: 14px;
+            color: #dc2626 !important;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .warning-text i {
+            color: #dc2626;
+        }
+
+        .delete-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .delete-actions .btn {
+            min-width: 120px;
+        }
+
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+            border: 1px solid #dc2626;
+        }
+
+        .btn-danger:hover {
+            background: #b91c1c;
+            border-color: #b91c1c;
+            transform: translateY(-1px);
+            box-shadow: 0 10px 25px rgba(220, 38, 38, 0.3);
+        }
+
+        .btn-danger:active {
+            transform: translateY(0);
+        }
+
+        .btn-danger:disabled {
+            background: #9ca3af;
+            border-color: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
         .dropdown-item.danger:hover {
             background-color: #fce8e6;
         }
@@ -946,6 +1028,37 @@
                     <button class="btn btn-secondary" id="cancel-folder">Cancel</button>
                     <button class="btn btn-primary" id="confirm-create-folder">
                         <i class="fas fa-plus"></i> Create Folder
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div class="upload-modal" id="delete-confirmation-modal" style="display: none;">
+        <div class="upload-modal-content" style="max-width: 450px;">
+            <div class="upload-modal-header">
+                <h3><i class="fas fa-exclamation-triangle" style="color: #ef4444;"></i> Confirm Deletion</h3>
+                <button class="close-modal" id="close-delete-modal">&times;</button>
+            </div>
+            
+            <div style="padding: 20px;">
+                <div class="delete-warning">
+                    <p>Are you sure you want to delete this file?</p>
+                    <div class="file-to-delete">
+                        <i class="fas fa-file" id="delete-file-icon"></i>
+                        <span id="delete-file-name">filename.txt</span>
+                    </div>
+                    <p class="warning-text">
+                        <i class="fas fa-exclamation-circle"></i>
+                        This action cannot be undone.
+                    </p>
+                </div>
+                
+                <div class="delete-actions">
+                    <button class="btn btn-secondary" id="cancel-delete">Cancel</button>
+                    <button class="btn btn-danger" id="confirm-delete">
+                        <i class="fas fa-trash"></i> Delete File
                     </button>
                 </div>
             </div>
@@ -1245,7 +1358,13 @@
             const confirmCreateBtn = document.getElementById('confirm-create-folder');
             const folderNameInput = document.getElementById('folder-name-input');
 
-            // Close modal handlers
+            // Delete modal elements
+            const deleteModal = document.getElementById('delete-confirmation-modal');
+            const closeDeleteModal = document.getElementById('close-delete-modal');
+            const cancelDeleteBtn = document.getElementById('cancel-delete');
+            const confirmDeleteBtn = document.getElementById('confirm-delete');
+
+            // Create Folder Modal handlers
             if (closeFolderModal) {
                 closeFolderModal.addEventListener('click', window.hideCreateFolderModal);
             }
@@ -1253,11 +1372,29 @@
                 cancelFolderBtn.addEventListener('click', window.hideCreateFolderModal);
             }
 
+            // Delete Modal handlers
+            if (closeDeleteModal) {
+                closeDeleteModal.addEventListener('click', window.hideDeleteConfirmationModal);
+            }
+            if (cancelDeleteBtn) {
+                cancelDeleteBtn.addEventListener('click', window.hideDeleteConfirmationModal);
+            }
+            if (confirmDeleteBtn) {
+                confirmDeleteBtn.addEventListener('click', confirmDeleteFile);
+            }
+
             // Click outside modal to close
             if (createFolderModal) {
                 createFolderModal.addEventListener('click', function(e) {
                     if (e.target === createFolderModal) {
                         window.hideCreateFolderModal();
+                    }
+                });
+            }
+            if (deleteModal) {
+                deleteModal.addEventListener('click', function(e) {
+                    if (e.target === deleteModal) {
+                        window.hideDeleteConfirmationModal();
                     }
                 });
             }
@@ -1291,6 +1428,18 @@
                     }
                 });
             }
+
+            // ESC key to close modals
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    if (createFolderModal.style.display === 'flex') {
+                        window.hideCreateFolderModal();
+                    }
+                    if (deleteModal.style.display === 'flex') {
+                        window.hideDeleteConfirmationModal();
+                    }
+                }
+            });
 
             // Upload queue buttons
             const startUploadBtn = document.getElementById('start-upload');
@@ -1744,22 +1893,67 @@
             }
         }
 
-        // Delete file function
-        async function deleteFile(fileKey, displayName) {
-            if (!confirm(`Are you sure you want to delete "${displayName}"?`)) {
-                return;
+        // Beautiful delete confirmation modal functionality
+        let pendingDeleteFile = null;
+
+        window.showDeleteConfirmationModal = function(fileKey, displayName, fileType = 'file') {
+            const modal = document.getElementById('delete-confirmation-modal');
+            const fileNameElement = document.getElementById('delete-file-name');
+            const fileIconElement = document.getElementById('delete-file-icon');
+            
+            // Store the file info for deletion
+            pendingDeleteFile = { key: fileKey, name: displayName, type: fileType };
+            
+            // Update modal content
+            fileNameElement.textContent = displayName;
+            
+            // Set appropriate icon based on file type
+            if (fileType === 'folder') {
+                fileIconElement.className = 'fas fa-folder';
+                fileIconElement.style.color = '#f59e0b';
+            } else if (displayName.match(/\.(jpg|jpeg|png|gif|bmp|svg)$/i)) {
+                fileIconElement.className = 'fas fa-image';
+                fileIconElement.style.color = '#10b981';
+            } else if (displayName.match(/\.(mp3|wav|ogg|webm|mp4|avi|mov)$/i)) {
+                fileIconElement.className = 'fas fa-play-circle';
+                fileIconElement.style.color = '#8b5cf6';
+            } else if (displayName.match(/\.(pdf|doc|docx|txt|md)$/i)) {
+                fileIconElement.className = 'fas fa-file-alt';
+                fileIconElement.style.color = '#ef4444';
+            } else {
+                fileIconElement.className = 'fas fa-file';
+                fileIconElement.style.color = '#6b7280';
             }
             
-            const idToken = localStorage.getItem('id_token');
-            if (!idToken) {
-                alert('You must be logged in to delete files');
-                return;
-            }
+            // Show the modal
+            modal.style.display = 'flex';
+        };
+
+        window.hideDeleteConfirmationModal = function() {
+            const modal = document.getElementById('delete-confirmation-modal');
+            modal.style.display = 'none';
+            pendingDeleteFile = null;
+        };
+
+        async function confirmDeleteFile() {
+            if (!pendingDeleteFile) return;
+            
+            const deleteBtn = document.getElementById('confirm-delete');
+            const originalContent = deleteBtn.innerHTML;
+            
+            // Show loading state
+            deleteBtn.disabled = true;
+            deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
             
             try {
-                console.log(`Deleting file: ${fileKey}`);
+                const idToken = localStorage.getItem('id_token');
+                if (!idToken) {
+                    throw new Error('You must be logged in to delete files');
+                }
                 
-                const encodedKey = encodeURIComponent(fileKey);
+                console.log(`Deleting file: ${pendingDeleteFile.key}`);
+                
+                const encodedKey = encodeURIComponent(pendingDeleteFile.key);
                 const response = await fetch(`/api/s3/delete/${encodedKey}`, {
                     method: 'DELETE',
                     headers: {
@@ -1774,6 +1968,9 @@
                 
                 console.log('Delete successful');
                 
+                // Hide modal
+                window.hideDeleteConfirmationModal();
+                
                 // Refresh the file list
                 setTimeout(() => {
                     listS3Files();
@@ -1782,7 +1979,16 @@
             } catch (error) {
                 console.error('Error deleting file:', error);
                 alert(`Failed to delete file: ${error.message}`);
+            } finally {
+                // Reset button state
+                deleteBtn.disabled = false;
+                deleteBtn.innerHTML = originalContent;
             }
+        }
+
+        // Wrapper function for backwards compatibility
+        function deleteFile(fileKey, displayName) {
+            window.showDeleteConfirmationModal(fileKey, displayName);
         }
 
 
