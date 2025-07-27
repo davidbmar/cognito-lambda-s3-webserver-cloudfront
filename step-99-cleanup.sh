@@ -70,8 +70,47 @@ if [ -n "$DEPLOYMENT_BUCKETS" ]; then
     done
 fi
 
-# First, empty the S3 bucket (this is required before the bucket can be deleted)
+# Check if the S3 bucket was created by this CloudFormation stack
+BUCKET_CREATED_BY_STACK=false
 if [ -n "$S3_BUCKET_NAME" ]; then
+    echo "🔍 Checking if S3 bucket $S3_BUCKET_NAME was created by this stack..."
+    
+    # Check if bucket exists in CloudFormation stack resources
+    BUCKET_IN_STACK=$(aws cloudformation describe-stack-resources --stack-name $STACK_NAME --query "StackResources[?ResourceType=='AWS::S3::Bucket' && PhysicalResourceId=='$S3_BUCKET_NAME'].LogicalResourceId" --output text 2>/dev/null || echo "")
+    
+    if [ -n "$BUCKET_IN_STACK" ] && [ "$BUCKET_IN_STACK" != "None" ]; then
+        BUCKET_CREATED_BY_STACK=true
+        echo "✅ S3 bucket $S3_BUCKET_NAME was created by this stack"
+    else
+        echo "ℹ️ S3 bucket $S3_BUCKET_NAME existed before this stack was created"
+    fi
+fi
+
+# Ask user about S3 bucket handling
+DELETE_BUCKET=true
+if [ -n "$S3_BUCKET_NAME" ]; then
+    echo
+    if [ "$BUCKET_CREATED_BY_STACK" = true ]; then
+        echo "📦 S3 bucket handling:"
+        echo "   The bucket '$S3_BUCKET_NAME' was created by this stack."
+        read -p "Do you want to delete the S3 bucket and ALL its contents? (y/N): " DELETE_BUCKET_CONFIRM
+    else
+        echo "📦 S3 bucket handling:"
+        echo "   The bucket '$S3_BUCKET_NAME' existed before this deployment."
+        echo "   It contains your files and may be used by other applications."
+        read -p "Do you want to delete the S3 bucket and ALL its contents? (y/N): " DELETE_BUCKET_CONFIRM
+    fi
+    
+    if [ "$DELETE_BUCKET_CONFIRM" != "y" ] && [ "$DELETE_BUCKET_CONFIRM" != "Y" ]; then
+        DELETE_BUCKET=false
+        echo "✅ S3 bucket will be preserved"
+    else
+        echo "⚠️ S3 bucket will be deleted"
+    fi
+fi
+
+# Handle S3 bucket based on user choice
+if [ "$DELETE_BUCKET" = true ] && [ -n "$S3_BUCKET_NAME" ]; then
     echo "🗑️ Emptying S3 bucket: $S3_BUCKET_NAME"
     # Check if bucket exists before trying to empty it
     if aws s3api head-bucket --bucket "$S3_BUCKET_NAME" 2>/dev/null; then
@@ -79,6 +118,9 @@ if [ -n "$S3_BUCKET_NAME" ]; then
     else
         echo "ℹ️ S3 bucket $S3_BUCKET_NAME does not exist or is not accessible."
     fi
+elif [ "$DELETE_BUCKET" = false ] && [ -n "$S3_BUCKET_NAME" ]; then
+    echo "🔒 Preserving S3 bucket: $S3_BUCKET_NAME"
+    echo "⚠️ Note: The bucket policy may be updated to remove CloudFront access"
 fi
 
 # If there's a Cognito domain, delete it (must be done before stack deletion)
@@ -189,7 +231,11 @@ echo "✅ Cleanup completed!"
 echo
 echo "The following resources should have been deleted:"
 echo "- CloudFormation stack: $STACK_NAME"
-echo "- S3 bucket: $S3_BUCKET_NAME"
+if [ "$DELETE_BUCKET" = true ]; then
+    echo "- S3 bucket: $S3_BUCKET_NAME (DELETED)"
+else
+    echo "- S3 bucket: $S3_BUCKET_NAME (PRESERVED)"
+fi
 echo "- CloudFront distribution"
 echo "- Cognito User Pool and Identity Pool"
 echo "- API Gateway endpoints"
