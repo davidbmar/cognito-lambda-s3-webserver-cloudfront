@@ -246,6 +246,14 @@ else
     sed -i.bak "s|CLOUDFRONT_API_ENDPOINT=.*$|CLOUDFRONT_API_ENDPOINT=$CLOUDFRONT_API_ENDPOINT|g" .env
 fi
 
+# Add Audio API endpoint to .env if it doesn't exist
+AUDIO_API_ENDPOINT="${CLOUDFRONT_URL}/api/audio"
+if ! grep -q "AUDIO_API_ENDPOINT" .env; then
+    echo "AUDIO_API_ENDPOINT=$AUDIO_API_ENDPOINT" >> .env
+else
+    sed -i.bak "s|AUDIO_API_ENDPOINT=.*$|AUDIO_API_ENDPOINT=$AUDIO_API_ENDPOINT|g" .env
+fi
+
 # Update the app.js replacement section to use CloudFront API:
 echo "📝 Creating app.js from template..."
 if [ -f web/app.js.template ]; then

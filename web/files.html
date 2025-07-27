@@ -1,0 +1,1654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Manager - CloudDrive</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .logo i {
+            margin-right: 0.5rem;
+            font-size: 1.8rem;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        .main-content {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            min-height: 600px;
+        }
+
+        .file-manager {
+            padding: 2rem;
+        }
+
+        .file-manager-header {
+            margin-bottom: 2rem;
+        }
+
+        .breadcrumb-row {
+            margin-bottom: 1rem;
+        }
+
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .breadcrumb-item {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .breadcrumb-item:hover {
+            background-color: #f0f0f0;
+        }
+
+        .breadcrumb-separator {
+            color: #666;
+            margin: 0 0.25rem;
+            font-size: 0.8rem;
+        }
+
+        .back-button {
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            color: #333;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+            margin-bottom: 1rem;
+        }
+
+        .back-button:hover {
+            background: #e9ecef;
+            transform: translateY(-1px);
+            text-decoration: none;
+            color: #333;
+        }
+
+        .back-button.show {
+            display: flex;
+        }
+
+        .navigation-hint {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        .up-arrow {
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .up-arrow:hover {
+            background-color: #f0f0f0;
+        }
+
+        .file-manager-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .file-manager h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #333;
+            border: 1px solid #dee2e6;
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+            transform: translateY(-1px);
+        }
+
+        /* Upload Modal Styles */
+        .upload-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .upload-modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 2rem;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .upload-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .upload-modal-header h3 {
+            margin: 0;
+            color: #333;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-modal:hover {
+            color: #333;
+        }
+
+        .upload-zone {
+            border: 2px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+
+        .upload-zone.drag-over {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .upload-zone .upload-icon {
+            font-size: 3rem;
+            color: #667eea;
+            margin-bottom: 1rem;
+        }
+
+        .upload-zone p {
+            margin: 0 0 0.5rem 0;
+            color: #333;
+        }
+
+        .upload-zone small {
+            color: #666;
+        }
+
+        .upload-queue {
+            margin-top: 1.5rem;
+        }
+
+        .upload-queue h4 {
+            margin: 0 0 1rem 0;
+            color: #333;
+        }
+
+        .upload-items {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 1rem;
+        }
+
+        .upload-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-item-icon {
+            color: #667eea;
+            font-size: 1.2rem;
+        }
+
+        .upload-item-info {
+            flex: 1;
+        }
+
+        .upload-item-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #333;
+        }
+
+        .upload-item-size {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .upload-item-status {
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .upload-status-pending {
+            background: #f8f9fa;
+            color: #666;
+        }
+
+        .upload-status-uploading {
+            background: #cce5ff;
+            color: #0066cc;
+        }
+
+        .upload-status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .upload-status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .upload-progress {
+            width: 100%;
+            height: 4px;
+            background: #e9ecef;
+            border-radius: 2px;
+            margin-top: 0.5rem;
+        }
+
+        .upload-progress-bar {
+            height: 100%;
+            background: #667eea;
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        .upload-actions {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 0.5rem;
+        }
+
+        .file-list-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            position: relative;
+            min-height: 80px;
+            isolation: isolate;
+        }
+
+        .file-list-item:hover {
+            background: #f8f9fa;
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+        }
+
+        .file-list-icon {
+            font-size: 2rem;
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .file-list-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .file-list-name {
+            font-weight: 600;
+            font-size: 1rem;
+            color: #333;
+            line-height: 1.4;
+            word-break: break-word;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .file-list-meta {
+            font-size: 0.875rem;
+            color: #666;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .file-list-meta span {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            white-space: nowrap;
+        }
+
+        .file-list-actions {
+            position: relative;
+            margin-left: auto;
+            flex-shrink: 0;
+            z-index: 10;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: #666;
+        }
+
+        .empty-state i {
+            font-size: 4rem;
+            color: #dee2e6;
+            margin-bottom: 1rem;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #666;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .container {
+                margin: 1rem;
+                padding: 0;
+            }
+
+            .main-content {
+                border-radius: 15px;
+                margin: 0 1rem;
+            }
+
+            .file-manager {
+                padding: 1rem;
+            }
+
+            .file-manager-header-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .file-actions {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .file-upload-area {
+                padding: 2rem 1rem;
+            }
+
+            .file-list-item {
+                padding: 0.75rem;
+            }
+
+            .file-list-icon {
+                width: 40px;
+                height: 40px;
+                font-size: 1.5rem;
+            }
+
+            .back-button {
+                font-size: 1rem;
+                padding: 0.75rem 1.25rem;
+                margin-bottom: 1.5rem;
+            }
+
+            .navigation-hint {
+                font-size: 0.75rem;
+                margin-top: 0.75rem;
+            }
+
+            .breadcrumb {
+                overflow-x: auto;
+                white-space: nowrap;
+                padding-bottom: 0.25rem;
+            }
+
+            .breadcrumb::-webkit-scrollbar {
+                height: 3px;
+            }
+
+            .breadcrumb::-webkit-scrollbar-track {
+                background: #f1f1f1;
+                border-radius: 3px;
+            }
+
+            .breadcrumb::-webkit-scrollbar-thumb {
+                background: #c1c1c1;
+                border-radius: 3px;
+            }
+        }
+
+        /* Floating navigation button */
+        .nav-fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            text-decoration: none;
+        }
+
+        .nav-fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+            color: white;
+        }
+
+        .nav-fab:active {
+            transform: scale(0.95);
+        }
+
+        .nav-fab i {
+            font-size: 24px;
+        }
+
+        /* Dropdown Menu Styles */
+        .dropdown-menu {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 4px);
+            background: #ffffff;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 2px 6px 2px rgba(60, 64, 67, 0.15);
+            min-width: 160px;
+            max-width: 240px;
+            z-index: 99999;
+            display: none;
+            overflow: hidden;
+            animation: fadeInScale 0.15s cubic-bezier(0.4, 0.0, 0.2, 1);
+            transform-origin: top right;
+        }
+
+        .dropdown-menu.flip-up {
+            top: auto;
+            bottom: calc(100% + 4px);
+            transform-origin: bottom right;
+        }
+
+        .dropdown-menu.show {
+            display: block;
+        }
+        
+        .file-list-item:has(.dropdown-menu.show) {
+            z-index: 1000;
+        }
+        
+        .file-list-item.dropdown-open {
+            z-index: 1000;
+        }
+
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            font-size: 14px;
+            color: #3c4043;
+            background: none;
+            border: none;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+
+        .dropdown-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .dropdown-item:focus {
+            background-color: #e8f0fe;
+            outline: none;
+        }
+
+        .dropdown-item i {
+            color: #5f6368;
+            font-size: 16px;
+            width: 16px;
+            text-align: center;
+        }
+
+        .dropdown-item span {
+            flex: 1;
+        }
+
+        .dropdown-divider {
+            height: 1px;
+            background-color: #dadce0;
+            margin: 4px 0;
+        }
+
+        .dropdown-item.danger {
+            color: #d93025;
+        }
+
+        .dropdown-item.danger i {
+            color: #d93025;
+        }
+
+        .dropdown-item.danger:hover {
+            background-color: #fce8e6;
+        }
+
+        .menu-btn {
+            background: none;
+            border: none;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            color: #5f6368;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            transition: background-color 0.15s ease;
+        }
+
+        .menu-btn:hover {
+            background-color: #f8f9fa;
+        }
+
+        /* Mobile adjustments for nav fab */
+        @media (max-width: 768px) {
+            .nav-fab {
+                bottom: 20px;
+                right: 20px;
+                width: 48px;
+                height: 48px;
+            }
+            
+            .nav-fab i {
+                font-size: 20px;
+            }
+
+            .dropdown-menu {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 280px;
+                max-width: 90vw;
+            }
+            
+            .dropdown-item {
+                padding: 12px 16px;
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">
+            <i class="fas fa-cloud"></i>
+            CloudDrive
+        </div>
+        <div class="user-info">
+            <span id="user-email">Loading...</span>
+            <div class="user-avatar" id="user-avatar">?</div>
+            <button class="btn btn-secondary" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i>
+                Logout
+            </button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="main-content">
+            <div class="file-manager">
+                <div class="file-manager-header">
+                    <!-- Back Button (shown when in subdirectory) -->
+                    <div class="back-button" id="back-button" onclick="navigateUp()">
+                        <i class="fas fa-arrow-left"></i>
+                        <span>Back</span>
+                    </div>
+                    
+                    <div class="breadcrumb-row">
+                        <div class="breadcrumb" id="breadcrumb-nav">
+                            <div class="breadcrumb-item" onclick="navigateToFolder('')">
+                                <i class="fas fa-home"></i>
+                                <span>My Files</span>
+                            </div>
+                        </div>
+                        <div class="navigation-hint">
+                            <span id="navigation-hint-text">Click folders to navigate, use breadcrumbs to jump to parent directories</span>
+                        </div>
+                    </div>
+                    <div class="file-manager-header-row">
+                        <div>
+                            <h2>File Manager</h2>
+                        </div>
+                        <div class="file-actions">
+                            <a href="/" class="btn btn-secondary">
+                                <i class="fas fa-home"></i>
+                                Dashboard
+                            </a>
+                            <button class="btn btn-primary" id="upload-button">
+                                <i class="fas fa-upload"></i>
+                                Upload Files
+                            </button>
+                            <button class="btn btn-secondary" id="create-folder-btn">
+                                <i class="fas fa-folder-plus"></i>
+                                New Folder
+                            </button>
+                            <button class="btn btn-secondary" id="refresh-files">
+                                <i class="fas fa-sync-alt"></i>
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+
+                <div id="file-container">
+                    <div class="loading">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Loading files...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div class="upload-modal" id="upload-modal" style="display: none;">
+        <div class="upload-modal-content">
+            <div class="upload-modal-header">
+                <h3>Upload Files</h3>
+                <button class="close-modal" id="close-upload">&times;</button>
+            </div>
+            
+            <div class="upload-zone" id="upload-zone">
+                <div class="upload-icon">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                </div>
+                <p>Drag and drop files here or <button class="btn btn-primary" id="browse-files">browse files</button></p>
+                <small>Maximum file size: 100MB per file</small>
+            </div>
+            
+            <div class="upload-queue" id="upload-queue" style="display: none;">
+                <h4>Upload Queue</h4>
+                <div class="upload-items" id="upload-items"></div>
+                <div class="upload-actions">
+                    <button class="btn btn-primary" id="start-upload">Start Upload</button>
+                    <button class="btn btn-secondary" id="clear-queue">Clear Queue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation FAB - Audio Recorder -->
+    <a href="/audio.html" class="nav-fab" title="Go to Audio Recorder">
+        <i class="fas fa-microphone"></i>
+    </a>
+
+    <!-- Hidden file input -->
+    <input type="file" id="file-input" multiple style="display: none;">
+
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1000.0.min.js"></script>
+    
+    <script>
+        // Auto-load file manager on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check authentication
+            const token = localStorage.getItem('id_token');
+            if (!token) {
+                window.location.href = '/';
+                return;
+            }
+
+            // Initialize user info first
+            if (typeof updateUserInfo === 'function') {
+                updateUserInfo();
+            }
+
+            // Initialize file manager
+            setTimeout(() => {
+                if (typeof listS3Files === 'function') {
+                    listS3Files();
+                } else {
+                    console.error('listS3Files function not available');
+                }
+                
+                // Update navigation elements
+                if (typeof updateNavigationElements === 'function') {
+                    updateNavigationElements();
+                }
+            }, 500);
+
+            // Setup upload modal
+            const uploadButton = document.getElementById('upload-button');
+            const uploadModal = document.getElementById('upload-modal');
+            const closeUpload = document.getElementById('close-upload');
+            const browseFiles = document.getElementById('browse-files');
+            const fileInput = document.getElementById('file-input');
+            const uploadZone = document.getElementById('upload-zone');
+
+            // Show upload modal
+            if (uploadButton) {
+                uploadButton.addEventListener('click', () => {
+                    uploadModal.style.display = 'flex';
+                });
+            }
+
+            // Close upload modal
+            if (closeUpload) {
+                closeUpload.addEventListener('click', () => {
+                    uploadModal.style.display = 'none';
+                });
+            }
+
+            // Click outside modal to close
+            if (uploadModal) {
+                uploadModal.addEventListener('click', (e) => {
+                    if (e.target === uploadModal) {
+                        uploadModal.style.display = 'none';
+                    }
+                });
+            }
+
+            // Browse files button
+            if (browseFiles && fileInput) {
+                browseFiles.addEventListener('click', () => {
+                    fileInput.click();
+                });
+
+                fileInput.addEventListener('change', (e) => {
+                    if (e.target.files.length > 0) {
+                        handleFileSelect(e.target.files);
+                        // Don't close modal immediately - let user see the queue
+                    }
+                });
+            }
+
+            // Drag and drop on upload zone
+            if (uploadZone) {
+                uploadZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    uploadZone.classList.add('drag-over');
+                });
+
+                uploadZone.addEventListener('dragleave', () => {
+                    uploadZone.classList.remove('drag-over');
+                });
+
+                uploadZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    uploadZone.classList.remove('drag-over');
+                    if (e.dataTransfer.files.length > 0) {
+                        handleFileSelect(e.dataTransfer.files);
+                        // Don't close modal immediately - let user see the queue
+                    }
+                });
+            }
+
+            // Refresh button
+            const refreshBtn = document.getElementById('refresh-files');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function() {
+                    const icon = this.querySelector('i');
+                    icon.style.animation = 'spin 1s linear infinite';
+                    setTimeout(() => {
+                        icon.style.animation = '';
+                        if (typeof listS3Files === 'function') {
+                            listS3Files();
+                        }
+                    }, 500);
+                });
+            }
+
+            // Create folder button
+            const createFolderBtn = document.getElementById('create-folder-btn');
+            if (createFolderBtn) {
+                createFolderBtn.addEventListener('click', function() {
+                    if (typeof createFolder === 'function') {
+                        createFolder();
+                    }
+                });
+            }
+
+            // Upload queue buttons
+            const startUploadBtn = document.getElementById('start-upload');
+            const clearQueueBtn = document.getElementById('clear-queue');
+
+            if (startUploadBtn) {
+                startUploadBtn.addEventListener('click', startUploadProcess);
+            }
+
+            if (clearQueueBtn) {
+                clearQueueBtn.addEventListener('click', () => {
+                    uploadQueue = [];
+                    updateUploadQueue();
+                });
+            }
+
+            // Keyboard navigation
+            document.addEventListener('keydown', function(e) {
+                // ESC key to go back
+                if (e.key === 'Escape' && typeof navigateUp === 'function') {
+                    navigateUp();
+                }
+                // Alt+← (or Cmd+← on Mac) for back
+                if ((e.altKey || e.metaKey) && e.key === 'ArrowLeft' && typeof navigateUp === 'function') {
+                    e.preventDefault();
+                    navigateUp();
+                }
+            });
+
+            // Update navigation elements based on current path
+            window.updateNavigationElements = function() {
+                const backButton = document.getElementById('back-button');
+                const hintText = document.getElementById('navigation-hint-text');
+                
+                if (window.currentPath && window.currentPath.length > 0) {
+                    // In a subdirectory
+                    if (backButton) backButton.classList.add('show');
+                    if (hintText) hintText.textContent = 'Press ESC or click Back to go to parent directory';
+                } else {
+                    // In root directory
+                    if (backButton) backButton.classList.remove('show');
+                    if (hintText) hintText.textContent = 'Click folders to navigate, use breadcrumbs to jump to parent directories';
+                }
+            };
+        });
+
+        // Navigation functionality
+        window.currentPath = '';
+
+        function navigateToFolder(folderPath) {
+            window.currentPath = folderPath;
+            updateBreadcrumb();
+            listS3Files();
+        }
+
+        function navigateUp() {
+            if (window.currentPath) {
+                const pathParts = window.currentPath.split('/').filter(p => p.length > 0);
+                pathParts.pop();
+                window.currentPath = pathParts.length > 0 ? pathParts.join('/') + '/' : '';
+                updateBreadcrumb();
+                listS3Files();
+            }
+        }
+
+        function updateBreadcrumb() {
+            const breadcrumbNav = document.getElementById('breadcrumb-nav');
+            if (!breadcrumbNav) return;
+            
+            const isInSubdirectory = window.currentPath && window.currentPath.length > 0;
+            let breadcrumbHTML = `
+                <div class="breadcrumb-item" onclick="navigateToFolder('')">
+                    <i class="fas fa-home"></i>
+                    <span>My Files</span>
+                </div>
+            `;
+            
+            if (window.currentPath) {
+                const pathParts = window.currentPath.split('/').filter(p => p.length > 0);
+                let cumulativePath = '';
+                
+                pathParts.forEach((part, index) => {
+                    cumulativePath += part + '/';
+                    breadcrumbHTML += `
+                        <span class="breadcrumb-separator">
+                            <i class="fas fa-chevron-right"></i>
+                        </span>
+                        <div class="breadcrumb-item" onclick="navigateToFolder('${cumulativePath}')">
+                            <i class="fas fa-folder"></i>
+                            <span>${part}</span>
+                        </div>
+                    `;
+                });
+            }
+            
+            breadcrumbNav.innerHTML = breadcrumbHTML;
+        }
+
+        // User info update functionality
+        function updateUserInfo() {
+            const token = localStorage.getItem('id_token');
+            if (!token) return;
+            
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const email = payload.email || 'User';
+                const userEmailSpan = document.getElementById('user-email');
+                const userAvatar = document.getElementById('user-avatar');
+                
+                if (userEmailSpan) {
+                    userEmailSpan.textContent = email;
+                }
+                
+                if (userAvatar) {
+                    const initials = email.split('@')[0].substring(0, 2).toUpperCase();
+                    userAvatar.textContent = initials;
+                }
+            } catch (error) {
+                console.error('Error updating user info:', error);
+            }
+        }
+
+        // Extract folders and files for current directory
+        function extractFoldersAndFiles(files) {
+            const folders = new Set();
+            const fileList = [];
+            
+            files.forEach(file => {
+                const fullKey = file.key || file;
+                
+                // Remove user prefix first
+                let relativePath = fullKey;
+                if (relativePath.startsWith('users/')) {
+                    const pathParts = relativePath.split('/');
+                    if (pathParts.length >= 3) {
+                        // Remove "users" and userId parts, keep the rest
+                        relativePath = pathParts.slice(2).join('/');
+                    }
+                }
+                
+                // If we're in a subfolder, check if this file belongs to current path
+                if (window.currentPath && !relativePath.startsWith(window.currentPath)) {
+                    return;
+                }
+                
+                // Remove current path prefix
+                const pathWithoutPrefix = window.currentPath ? relativePath.replace(window.currentPath, '') : relativePath;
+                
+                // Split path into parts
+                const pathParts = pathWithoutPrefix.split('/').filter(p => p.length > 0);
+                
+                if (pathParts.length >= 2) {
+                    // This file is inside a subfolder
+                    const folderName = pathParts[0];
+                    const fileName = pathParts[1];
+                    
+                    // If this is a .folder marker file, extract the folder name
+                    if (fileName === '.folder') {
+                        folders.add(folderName);
+                    } else {
+                        // Regular file in subfolder - still add the folder
+                        folders.add(folderName);
+                    }
+                } else if (pathParts.length === 1) {
+                    // This is a file in the current directory
+                    const fileName = pathParts[0];
+                    if (fileName !== '.folder' && fileName.length > 0) {
+                        // Only add actual files, skip any stray .folder files
+                        fileList.push({
+                            ...file,
+                            displayKey: fileName,
+                            isFolder: false
+                        });
+                    }
+                }
+            });
+            
+            // Convert folders to file-like objects
+            const folderObjects = Array.from(folders).map(folderName => ({
+                key: window.currentPath + folderName + '/',
+                displayKey: folderName,
+                size: 0,
+                lastModified: new Date(),
+                isFolder: true
+            }));
+            
+            // Sort: folders first, then files
+            const sortedFolders = folderObjects.sort((a, b) => a.displayKey.localeCompare(b.displayKey));
+            const sortedFiles = fileList.sort((a, b) => (a.displayKey || a.key).localeCompare(b.displayKey || b.key));
+            
+            return [...sortedFolders, ...sortedFiles];
+        }
+
+        // Basic listS3Files function
+        async function listS3Files() {
+            const idToken = localStorage.getItem('id_token');
+            const fileContainer = document.getElementById('file-container');
+            
+            updateBreadcrumb();
+            
+            if (!idToken) {
+                fileContainer.innerHTML = '<div class="empty-state"><p>You must be logged in to access files.</p></div>';
+                return;
+            }
+            
+            try {
+                console.log('Making S3 list API call...');
+                
+                fileContainer.innerHTML = `
+                    <div class="loading">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Loading your files...
+                    </div>
+                `;
+                
+                const response = await fetch(`/api/s3/list?prefix=`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API request failed: ${response.status} - ${errorText}`);
+                }
+                
+                const data = await response.json();
+                
+                fileContainer.innerHTML = '';
+                
+                if (data.files && data.files.length > 0) {
+                    // Extract folders and files for current directory
+                    const items = extractFoldersAndFiles(data.files);
+                    
+                    const fileList = document.createElement('div');
+                    fileList.className = 'file-list';
+                    
+                    items.forEach((item, index) => {
+                        // Use the cleaned displayKey from extractFoldersAndFiles
+                        let displayName = item.displayKey || item.key || 'Unnamed file';
+                        const isFolder = item.isFolder || false;
+                        
+                        // Get file extension for icon (only for files)
+                        const extension = isFolder ? '' : displayName.split('.').pop().toLowerCase();
+                        
+                        // Choose appropriate icon
+                        let iconClass = 'fas fa-file';
+                        let iconColor = '#666';
+                        
+                        if (isFolder) {
+                            iconClass = 'fas fa-folder';
+                            iconColor = '#ffc107';
+                        } else if (['jpg', 'jpeg', 'png', 'gif', 'svg'].includes(extension)) {
+                            iconClass = 'fas fa-file-image';
+                            iconColor = '#28a745';
+                        } else if (['pdf'].includes(extension)) {
+                            iconClass = 'fas fa-file-pdf';
+                            iconColor = '#dc3545';
+                        } else if (['doc', 'docx'].includes(extension)) {
+                            iconClass = 'fas fa-file-word';
+                            iconColor = '#2b5797';
+                        } else if (['xls', 'xlsx'].includes(extension)) {
+                            iconClass = 'fas fa-file-excel';
+                            iconColor = '#217346';
+                        } else if (['mp3', 'wav', 'ogg'].includes(extension)) {
+                            iconClass = 'fas fa-file-audio';
+                            iconColor = '#9c27b0';
+                        } else if (['mp4', 'avi', 'mov'].includes(extension)) {
+                            iconClass = 'fas fa-file-video';
+                            iconColor = '#ff5722';
+                        } else if (['zip', 'rar', '7z', 'tar', 'gz'].includes(extension)) {
+                            iconClass = 'fas fa-file-archive';
+                            iconColor = '#ffc107';
+                        }
+                        
+                        const fileItem = document.createElement('div');
+                        fileItem.className = 'file-list-item';
+                        fileItem.innerHTML = `
+                            <div class="file-list-icon">
+                                <i class="${iconClass}" style="color: ${iconColor};"></i>
+                            </div>
+                            <div class="file-list-info">
+                                <div class="file-list-name" title="${displayName}">${displayName}</div>
+                                <div class="file-list-meta">
+                                    <span><i class="fas fa-hdd"></i> ${formatFileSize(item.size || 0)}</span>
+                                    <span><i class="fas fa-calendar"></i> ${new Date(item.lastModified || Date.now()).toLocaleDateString()}</span>
+                                </div>
+                            </div>
+                            <div class="file-list-actions">
+                                <button class="menu-btn" data-key="${item.key}" data-name="${displayName}" aria-label="More actions">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <div class="dropdown-menu">
+                                    ${isFolder ? 
+                                        `<button class="dropdown-item open-btn" data-key="${item.key}">
+                                            <i class="fas fa-folder-open"></i>
+                                            <span>Open</span>
+                                        </button>` :
+                                        `<button class="dropdown-item download-btn" data-key="${item.key}" data-name="${displayName}">
+                                            <i class="fas fa-download"></i>
+                                            <span>Download</span>
+                                        </button>`
+                                    }
+                                    <button class="dropdown-item delete-btn" data-key="${item.key}" data-name="${displayName}">
+                                        <i class="fas fa-trash"></i>
+                                        <span>Delete</span>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                        // Add event listeners for the dropdown menu
+                        const menuBtn = fileItem.querySelector('.menu-btn');
+                        const dropdownMenu = fileItem.querySelector('.dropdown-menu');
+                        const downloadBtn = fileItem.querySelector('.download-btn');
+                        const deleteBtn = fileItem.querySelector('.delete-btn');
+                        const openBtn = fileItem.querySelector('.open-btn');
+                        
+                        if (menuBtn && dropdownMenu) {
+                            menuBtn.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                // Close all other dropdowns
+                                document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
+                                    if (menu !== dropdownMenu) menu.classList.remove('show');
+                                });
+                                dropdownMenu.classList.toggle('show');
+                            });
+                        }
+                        
+                        if (downloadBtn) {
+                            downloadBtn.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                dropdownMenu.classList.remove('show');
+                                if (!isFolder) {
+                                    downloadFile(item.key, displayName);
+                                }
+                            });
+                        }
+                        
+                        if (deleteBtn) {
+                            deleteBtn.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                dropdownMenu.classList.remove('show');
+                                deleteFile(item.key, displayName);
+                            });
+                        }
+                        
+                        if (openBtn) {
+                            openBtn.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                dropdownMenu.classList.remove('show');
+                                navigateToFolder(item.key);
+                            });
+                        }
+                        
+                        // Add click handler for row click (navigate folders)
+                        fileItem.addEventListener('click', (e) => {
+                            // Don't trigger if clicking on menu button or dropdown
+                            if (e.target.closest('.file-list-actions')) return;
+                            
+                            if (isFolder) {
+                                navigateToFolder(item.key);
+                            } else {
+                                // For files, show a preview or download
+                                downloadFile(item.key, displayName);
+                            }
+                        });
+                        
+                        fileList.appendChild(fileItem);
+                    });
+                    
+                    // Close dropdowns when clicking outside
+                    document.addEventListener('click', () => {
+                        document.querySelectorAll('.dropdown-menu.show').forEach(menu => {
+                            menu.classList.remove('show');
+                        });
+                    });
+                    
+                    fileContainer.appendChild(fileList);
+                } else {
+                    fileContainer.innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-folder-open"></i>
+                            <h3>No files found</h3>
+                            <p>Your file storage is empty. Upload some files to get started!</p>
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                console.error('Error calling S3 API:', error);
+                fileContainer.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i>
+                        <h3>Error loading files</h3>
+                        <p>${error.message}</p>
+                        <button class="btn btn-primary" onclick="listS3Files()">
+                            <i class="fas fa-retry"></i>
+                            Try Again
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
+        // Download file function
+        async function downloadFile(fileKey, displayName) {
+            const idToken = localStorage.getItem('id_token');
+            
+            if (!idToken) {
+                alert('You must be logged in to download files.');
+                return;
+            }
+            
+            try {
+                console.log(`Requesting download URL for: ${fileKey}`);
+                
+                const encodedKey = encodeURIComponent(fileKey);
+                const response = await fetch(`/api/s3/download/${encodedKey}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Download request failed: ${response.status}`);
+                }
+                
+                const downloadData = await response.json();
+                
+                // Create and trigger download
+                const downloadLink = document.createElement('a');
+                downloadLink.href = downloadData.downloadUrl;
+                downloadLink.download = displayName;
+                downloadLink.style.display = 'none';
+                
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                
+                console.log('Download started successfully');
+                
+            } catch (error) {
+                console.error('Error downloading file:', error);
+                alert(`Download failed: ${error.message}`);
+            }
+        }
+
+        // Delete file function
+        async function deleteFile(fileKey, displayName) {
+            if (!confirm(`Are you sure you want to delete "${displayName}"?`)) {
+                return;
+            }
+            
+            const idToken = localStorage.getItem('id_token');
+            if (!idToken) {
+                alert('You must be logged in to delete files');
+                return;
+            }
+            
+            try {
+                console.log(`Deleting file: ${fileKey}`);
+                
+                const encodedKey = encodeURIComponent(fileKey);
+                const response = await fetch(`/api/s3/delete/${encodedKey}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Delete failed: ${response.status}`);
+                }
+                
+                console.log('Delete successful');
+                
+                // Refresh the file list
+                setTimeout(() => {
+                    listS3Files();
+                }, 300);
+                
+            } catch (error) {
+                console.error('Error deleting file:', error);
+                alert(`Failed to delete file: ${error.message}`);
+            }
+        }
+
+        // Upload queue functionality
+        let uploadQueue = [];
+
+        // Handle file selection for upload
+        function handleFileSelect(files) {
+            console.log('handleFileSelect called with', files.length, 'files');
+            const maxSize = 100 * 1024 * 1024; // 100MB
+            
+            for (let file of files) {
+                if (file.size > maxSize) {
+                    alert(`File "${file.name}" exceeds maximum size of 100MB`);
+                    continue;
+                }
+                
+                // Check if file already in queue
+                if (!uploadQueue.find(f => f.name === file.name)) {
+                    uploadQueue.push({
+                        file: file,
+                        name: file.name,
+                        size: file.size,
+                        type: file.type || 'application/octet-stream',
+                        status: 'pending',
+                        progress: 0
+                    });
+                }
+            }
+            
+            updateUploadQueue();
+            
+            // Clear the file input to allow selecting the same file again if needed
+            const fileInput = document.getElementById('file-input');
+            if (fileInput) {
+                fileInput.value = '';
+            }
+        }
+
+        // Update upload queue display
+        function updateUploadQueue() {
+            const uploadQueueDiv = document.getElementById('upload-queue');
+            const uploadItems = document.getElementById('upload-items');
+            
+            if (uploadQueue.length === 0) {
+                uploadQueueDiv.style.display = 'none';
+                return;
+            }
+            
+            uploadQueueDiv.style.display = 'block';
+            uploadItems.innerHTML = uploadQueue.map((item, index) => `
+                <div class="upload-item" id="upload-item-${index}">
+                    <i class="upload-item-icon fas fa-file"></i>
+                    <div class="upload-item-info">
+                        <div class="upload-item-name">${item.name}</div>
+                        <div class="upload-item-size">${formatFileSize(item.size)}</div>
+                    </div>
+                    <div class="upload-item-status upload-status-${item.status}">
+                        ${getStatusText(item.status)}
+                    </div>
+                    <div class="upload-progress">
+                        <div class="upload-progress-bar" style="width: ${item.progress}%"></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Format file size helper
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Get status text helper
+        function getStatusText(status) {
+            const statusMap = {
+                'pending': 'Pending',
+                'uploading': 'Uploading...',
+                'success': 'Uploaded',
+                'error': 'Failed'
+            };
+            return statusMap[status] || status;
+        }
+
+        // Start upload process
+        async function startUploadProcess() {
+            const idToken = localStorage.getItem('id_token');
+            
+            if (!idToken) {
+                alert('You must be logged in to upload files.');
+                return;
+            }
+            
+            const pendingFiles = uploadQueue.filter(f => f.status === 'pending' || f.status === 'error');
+            
+            for (let i = 0; i < pendingFiles.length; i++) {
+                await uploadFile(pendingFiles[i], uploadQueue.indexOf(pendingFiles[i]));
+            }
+            
+            // Close modal after successful uploads
+            const uploadModal = document.getElementById('upload-modal');
+            if (uploadModal) {
+                uploadModal.style.display = 'none';
+            }
+            
+            // Refresh file list after all uploads
+            setTimeout(() => {
+                if (typeof listS3Files === 'function') {
+                    listS3Files();
+                }
+            }, 1000);
+        }
+
+        // Upload individual file
+        async function uploadFile(item, index) {
+            const idToken = localStorage.getItem('id_token');
+            
+            try {
+                // Update status
+                item.status = 'uploading';
+                updateUploadQueue();
+                
+                // Get current path from global variable
+                const currentPath = window.currentPath || '';
+                
+                // Get presigned URL
+                const response = await fetch('/api/s3/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fileName: currentPath + item.name,
+                        contentType: item.type,
+                        fileSize: item.size
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to get upload URL: ${response.status}`);
+                }
+                
+                const uploadData = await response.json();
+                
+                // Upload file to S3
+                const uploadResponse = await fetch(uploadData.uploadUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': item.type
+                    },
+                    body: item.file
+                });
+                
+                if (!uploadResponse.ok) {
+                    throw new Error(`Upload failed: ${uploadResponse.status}`);
+                }
+                
+                // Update status
+                item.status = 'success';
+                item.progress = 100;
+                updateUploadQueue();
+                
+            } catch (error) {
+                console.error('Error uploading file:', error);
+                item.status = 'error';
+                updateUploadQueue();
+                alert(`Failed to upload ${item.name}: ${error.message}`);
+            }
+        }
+
+        // Logout function
+        function logout() {
+            localStorage.clear();
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>

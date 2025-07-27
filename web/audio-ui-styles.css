@@ -401,3 +401,63 @@ body {
         min-height: 60px;
     }
 }
+
+/* Floating navigation button */
+.nav-fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    border: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    z-index: 1000;
+    text-decoration: none;
+}
+
+.nav-fab:hover {
+    background-color: hsl(var(--primary));
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.nav-fab:active {
+    transform: scale(0.95);
+}
+
+.nav-fab svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* Dark theme support for nav fab */
+.dark .nav-fab {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.dark .nav-fab:hover {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* Mobile adjustments for nav fab */
+@media (max-width: 768px) {
+    .nav-fab {
+        bottom: 20px;
+        right: 20px;
+        width: 48px;
+        height: 48px;
+    }
+    
+    .nav-fab svg {
+        width: 20px;
+        height: 20px;
+    }
+}

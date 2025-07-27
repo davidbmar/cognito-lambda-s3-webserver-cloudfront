@@ -572,6 +572,55 @@
             }
         }
 
+        /* Floating navigation button */
+        .nav-fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            z-index: 1000;
+            text-decoration: none;
+        }
+
+        .nav-fab:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+            color: white;
+        }
+
+        .nav-fab:active {
+            transform: scale(0.95);
+        }
+
+        .nav-fab i {
+            font-size: 24px;
+        }
+
+        /* Mobile adjustments for nav fab */
+        @media (max-width: 768px) {
+            .nav-fab {
+                bottom: 20px;
+                right: 20px;
+                width: 48px;
+                height: 48px;
+            }
+            
+            .nav-fab i {
+                font-size: 20px;
+            }
+        }
+
         /* List View Styles - Mobile First */
         .file-list {
             display: flex;
@@ -1507,7 +1556,7 @@
 
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; padding: 2rem 0;">
                     <!-- File Manager Card -->
-                    <div class="dashboard-card" onclick="showFileManager()">
+                    <div class="dashboard-card" onclick="window.location.href='/files.html'">
                         <div class="dashboard-card-icon">
                             <i class="fas fa-folder-open"></i>
                         </div>
@@ -1648,6 +1697,11 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- Navigation FAB - Audio Recorder (only in file manager) -->
+                <a href="/audio.html" class="nav-fab" title="Go to Audio Recorder">
+                    <i class="fas fa-microphone"></i>
+                </a>
             </div>
 
             <!-- Memory Section - MOVED TO BE SIBLING OF AUTHENTICATED-SECTION -->
@@ -1780,5 +1834,6 @@
             }
         });
     </script>
+
 </body>
 </html>
