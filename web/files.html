@@ -973,11 +973,19 @@
             // Create folder button
             const createFolderBtn = document.getElementById('create-folder-btn');
             if (createFolderBtn) {
-                createFolderBtn.addEventListener('click', function() {
-                    if (typeof createFolder === 'function') {
-                        createFolder();
+                console.log('Create folder button found, adding event listener');
+                createFolderBtn.addEventListener('click', function(e) {
+                    console.log('Create folder button clicked');
+                    e.preventDefault();
+                    if (typeof window.createFolder === 'function') {
+                        console.log('createFolder function exists, calling it');
+                        window.createFolder();
+                    } else {
+                        console.error('createFolder function not found');
                     }
                 });
+            } else {
+                console.error('Create folder button not found!');
             }
 
             // Upload queue buttons
@@ -1474,19 +1482,22 @@
         }
 
         // Create new folder functionality
-        async function createFolder() {
+        window.createFolder = async function() {
+            console.log('createFolder function called');
             const folderName = prompt('Enter folder name:');
             if (!folderName || !folderName.trim()) {
+                console.log('No folder name provided or empty');
                 return;
             }
+            console.log('Creating folder:', folderName);
 
             const sanitizedName = folderName.trim().replace(/[^a-zA-Z0-9.-]/g, '_');
             if (sanitizedName !== folderName.trim()) {
                 alert('Folder name has been sanitized to: ' + sanitizedName);
             }
 
-            const currentPath = currentFolder || '';
-            const fullPath = currentPath ? `${currentPath}/${sanitizedName}/` : `${sanitizedName}/`;
+            const currentPath = window.currentPath || '';
+            const fullPath = currentPath ? `${currentPath}${sanitizedName}/` : `${sanitizedName}/`;
 
             try {
                 const token = localStorage.getItem('id_token');
