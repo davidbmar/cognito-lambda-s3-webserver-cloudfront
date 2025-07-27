@@ -800,7 +800,7 @@
                                 <i class="fas fa-upload"></i>
                                 Upload Files
                             </button>
-                            <button class="btn btn-secondary" id="create-folder-btn">
+                            <button class="btn btn-secondary" id="create-folder-btn" type="button" style="cursor: pointer;" onclick="console.log('Button clicked via onclick'); if(window.createFolder) window.createFolder(); else alert('createFolder not found');">
                                 <i class="fas fa-folder-plus"></i>
                                 New Folder
                             </button>
@@ -861,6 +861,78 @@
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1000.0.min.js"></script>
     
     <script>
+        // Create new folder functionality - defined early for accessibility
+        window.createFolder = async function() {
+            console.log('createFolder function called');
+            const folderName = prompt('Enter folder name:');
+            if (!folderName || !folderName.trim()) {
+                console.log('No folder name provided or empty');
+                return;
+            }
+            console.log('Creating folder:', folderName);
+
+            const sanitizedName = folderName.trim().replace(/[^a-zA-Z0-9.-]/g, '_');
+            if (sanitizedName !== folderName.trim()) {
+                alert('Folder name has been sanitized to: ' + sanitizedName);
+            }
+
+            const currentPath = window.currentPath || '';
+            const fullPath = currentPath ? `${currentPath}${sanitizedName}/` : `${sanitizedName}/`;
+
+            try {
+                const token = localStorage.getItem('id_token');
+                if (!token) {
+                    throw new Error('Authentication token not found');
+                }
+
+                // Create folder by uploading an empty placeholder file
+                const response = await fetch('/api/s3/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fileName: `${fullPath}.folderkeeper`,
+                        fileType: 'text/plain'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to create folder: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                
+                // Upload empty content to create the folder structure
+                const uploadResponse = await fetch(data.uploadUrl, {
+                    method: 'PUT',
+                    body: '',
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    }
+                });
+
+                if (!uploadResponse.ok) {
+                    throw new Error(`Failed to upload folder marker: ${uploadResponse.statusText}`);
+                }
+
+                console.log('Folder created successfully:', fullPath);
+                
+                // Refresh file list to show the new folder
+                if (typeof listS3Files === 'function') {
+                    await listS3Files();
+                } else {
+                    console.log('listS3Files function not available, reloading page');
+                    window.location.reload();
+                }
+                
+            } catch (error) {
+                console.error('Error creating folder:', error);
+                alert(`Failed to create folder: ${error.message}`);
+            }
+        };
+
         // Auto-load file manager on page load
         document.addEventListener('DOMContentLoaded', function() {
             // Check authentication
@@ -1481,72 +1553,6 @@
             }
         }
 
-        // Create new folder functionality
-        window.createFolder = async function() {
-            console.log('createFolder function called');
-            const folderName = prompt('Enter folder name:');
-            if (!folderName || !folderName.trim()) {
-                console.log('No folder name provided or empty');
-                return;
-            }
-            console.log('Creating folder:', folderName);
-
-            const sanitizedName = folderName.trim().replace(/[^a-zA-Z0-9.-]/g, '_');
-            if (sanitizedName !== folderName.trim()) {
-                alert('Folder name has been sanitized to: ' + sanitizedName);
-            }
-
-            const currentPath = window.currentPath || '';
-            const fullPath = currentPath ? `${currentPath}${sanitizedName}/` : `${sanitizedName}/`;
-
-            try {
-                const token = localStorage.getItem('id_token');
-                if (!token) {
-                    throw new Error('Authentication token not found');
-                }
-
-                // Create folder by uploading an empty placeholder file
-                const response = await fetch('/api/s3/upload', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        fileName: `${fullPath}.folderkeeper`,
-                        fileType: 'text/plain'
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Failed to create folder: ${response.statusText}`);
-                }
-
-                const data = await response.json();
-                
-                // Upload empty content to create the folder structure
-                const uploadResponse = await fetch(data.uploadUrl, {
-                    method: 'PUT',
-                    body: '',
-                    headers: {
-                        'Content-Type': 'text/plain'
-                    }
-                });
-
-                if (!uploadResponse.ok) {
-                    throw new Error(`Failed to upload folder marker: ${uploadResponse.statusText}`);
-                }
-
-                console.log('Folder created successfully:', fullPath);
-                
-                // Refresh file list to show the new folder
-                await listS3Files();
-                
-            } catch (error) {
-                console.error('Error creating folder:', error);
-                alert(`Failed to create folder: ${error.message}`);
-            }
-        }
 
         // Upload queue functionality
         let uploadQueue = [];
