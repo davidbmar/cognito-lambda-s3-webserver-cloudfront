@@ -84,6 +84,16 @@ if [ ! -f serverless.yml.template ]; then
     exit 1
 fi
 
+# Check if S3 bucket already exists
+echo "🔍 Checking if S3 bucket $S3_BUCKET_NAME already exists..."
+BUCKET_EXISTS=false
+if aws s3api head-bucket --bucket "$S3_BUCKET_NAME" 2>/dev/null; then
+    echo "✅ S3 bucket $S3_BUCKET_NAME already exists"
+    BUCKET_EXISTS=true
+else
+    echo "🆕 S3 bucket $S3_BUCKET_NAME does not exist - will be created"
+fi
+
 # Copy template to working file
 cp serverless.yml.template serverless.yml
 
@@ -91,6 +101,30 @@ cp serverless.yml.template serverless.yml
 sed -i.bak "s/\${env:APP_NAME, 'cloudfront-cognito-app'}/$APP_NAME/g" serverless.yml
 sed -i.bak "s/\${env:REGION, 'us-east-2'}/$REGION/g" serverless.yml
 sed -i.bak "s/\${env:S3_BUCKET_NAME, '\${self:service}-website-\${sls:stage}-\${aws:accountId}'}/$S3_BUCKET_NAME/g" serverless.yml
+
+# If bucket exists, handle references differently
+if [ "$BUCKET_EXISTS" = true ]; then
+    echo "📝 Modifying serverless.yml to use existing bucket..."
+    
+    # Remove the WebsiteBucket resource section
+    sed -i.bak2 '/# S3 bucket for website hosting with public access/,/# Cognito user pool/{/# Cognito user pool/!d;}' serverless.yml
+    
+    # Also remove the WebsiteBucketPolicy since it depends on WebsiteBucket
+    sed -i.bak8 '/# Bucket policy for CloudFront OAC access/,/Outputs:/{/Outputs:/!d;}' serverless.yml
+    
+    # Replace all references to !Ref WebsiteBucket with the actual bucket name
+    sed -i.bak3 "s/!Ref WebsiteBucket/$S3_BUCKET_NAME/g" serverless.yml
+    
+    # Replace all references to !GetAtt WebsiteBucket with appropriate values
+    sed -i.bak4 "s/!GetAtt WebsiteBucket\.RegionalDomainName/${S3_BUCKET_NAME}.s3.${REGION}.amazonaws.com/g" serverless.yml
+    sed -i.bak5 "s/!GetAtt WebsiteBucket\.WebsiteURL/http:\/\/${S3_BUCKET_NAME}.s3-website-${REGION}.amazonaws.com/g" serverless.yml
+    
+    # Replace references to #{WebsiteBucket} in IAM policies
+    sed -i.bak6 "s/#{WebsiteBucket}/$S3_BUCKET_NAME/g" serverless.yml
+    
+    # Replace ${WebsiteBucket} references
+    sed -i.bak7 "s/\${WebsiteBucket}/$S3_BUCKET_NAME/g" serverless.yml
+fi
 
 echo "✅ serverless.yml created from template"
 
@@ -104,6 +138,53 @@ sed -i.bak "s/STAGE_PLACEHOLDER/$STAGE/g" serverless.yml
 # Deploy the serverless application
 echo "🚀 Deploying serverless application..."
 npx serverless deploy --stage $STAGE
+
+# If bucket already existed, we need to manually add the bucket policy for CloudFront
+if [ "$BUCKET_EXISTS" = true ]; then
+    echo "📝 Adding bucket policy for CloudFront access..."
+    
+    # Get the CloudFront distribution ID from the stack outputs
+    STACK_NAME="${APP_NAME}-${STAGE}"
+    CF_DISTRIBUTION_ID=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue" --output text 2>/dev/null || echo "")
+    
+    if [ -z "$CF_DISTRIBUTION_ID" ]; then
+        # Try to get it from the CloudFront distribution list
+        CF_DISTRIBUTION_ID=$(aws cloudformation describe-stack-resources --stack-name $STACK_NAME --query "StackResources[?ResourceType=='AWS::CloudFront::Distribution'].PhysicalResourceId" --output text 2>/dev/null || echo "")
+    fi
+    
+    if [ -n "$CF_DISTRIBUTION_ID" ] && [ "$CF_DISTRIBUTION_ID" != "None" ]; then
+        # Create bucket policy JSON
+        cat > /tmp/bucket-policy.json << EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "cloudfront.amazonaws.com"
+            },
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::${S3_BUCKET_NAME}/*",
+            "Condition": {
+                "StringEquals": {
+                    "AWS:SourceArn": "arn:aws:cloudfront::${ACCOUNT_ID}:distribution/${CF_DISTRIBUTION_ID}"
+                }
+            }
+        }
+    ]
+}
+EOF
+        
+        # Apply the bucket policy
+        aws s3api put-bucket-policy --bucket $S3_BUCKET_NAME --policy file:///tmp/bucket-policy.json
+        echo "✅ Bucket policy added for CloudFront access"
+        
+        # Clean up
+        rm -f /tmp/bucket-policy.json
+    else
+        echo "⚠️ Could not determine CloudFront distribution ID. You may need to manually add the bucket policy."
+    fi
+fi
 
 # Get the outputs from the deployment (add this section around line 200)
 echo "📊 Retrieving deployment outputs..."

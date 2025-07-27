@@ -531,6 +531,9 @@ resources:
     CloudFrontURL:
       Description: URL of the CloudFront distribution
       Value: !Sub "https://${CloudFrontDistribution.DomainName}"
+    CloudFrontDistributionId:
+      Description: ID of the CloudFront distribution
+      Value: !Ref CloudFrontDistribution
     S3DownloadEndpoint:
       Description: URL for S3 download API via CloudFront
       Value: !Sub "https://${CloudFrontDistribution.DomainName}/api/s3/download"
