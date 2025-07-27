@@ -181,6 +181,8 @@ EOF
         
         # Clean up
         rm -f /tmp/bucket-policy.json
+        
+        echo "✅ S3 permissions for authenticated users handled by CloudFormation"
     else
         echo "⚠️ Could not determine CloudFront distribution ID. You may need to manually add the bucket policy."
     fi

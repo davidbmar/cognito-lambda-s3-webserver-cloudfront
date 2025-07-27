@@ -391,6 +391,27 @@ resources:
                   cognito-identity.amazonaws.com:amr: authenticated
         ManagedPolicyArns:
           - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+        Policies:
+          - PolicyName: S3UserDataAccess
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                # Allow users to upload, read, and delete their own files
+                - Effect: Allow
+                  Action:
+                    - s3:PutObject
+                    - s3:PutObjectAcl
+                    - s3:GetObject
+                    - s3:DeleteObject
+                  Resource: !Sub "arn:aws:s3:::${WebsiteBucket}/users/*"
+                # Allow users to list their own directory
+                - Effect: Allow
+                  Action:
+                    - s3:ListBucket
+                  Resource: !Sub "arn:aws:s3:::${WebsiteBucket}"
+                  Condition:
+                    StringLike:
+                      s3:prefix: "users/*"
 
     # Custom resource to set identity pool roles after creation
     SetRolesCustomResource:
