@@ -421,8 +421,10 @@
 
             .file-actions {
                 display: grid;
-                grid-template-columns: 1fr 1fr;
+                grid-template-columns: repeat(2, 1fr);
                 gap: 0.5rem;
+                /* Allow buttons to wrap to multiple rows */
+                grid-auto-flow: row;
             }
 
             .file-actions .btn {
@@ -438,6 +440,24 @@
             /* Hide less important buttons on mobile */
             #get-data-button, #view-memory {
                 display: none;
+            }
+            
+            /* Ensure important buttons are visible on mobile */
+            #upload-button, #new-folder-button, #refresh-files {
+                display: block !important;
+            }
+            
+            /* DEBUG: Make new-folder-button very obvious */
+            #new-folder-button {
+                background-color: red !important;
+                color: white !important;
+                border: 3px solid yellow !important;
+                font-size: 16px !important;
+                padding: 10px !important;
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                z-index: 9999 !important;
             }
 
             .breadcrumb {
@@ -1744,8 +1764,8 @@
         </div>
 
         <!-- Debug Section -->
-        <div id="debug" style="background-color: #f0f0f0; padding: 20px; margin-top: 20px; border-radius: 10px; display: none;">
-            <h3>Debug Information</h3>
+        <div id="debug" style="background-color: #f0f0f0; padding: 20px; margin-top: 20px; border-radius: 10px; display: block;">
+            <h3>Button Debug Information</h3>
             <pre id="debug-info"></pre>
             <button class="btn btn-secondary btn-sm" id="toggle-debug">Hide Debug Info</button>
         </div>
@@ -1806,6 +1826,27 @@
                     } catch (e) {
                         debugText += `Error parsing token: ${e.message}`;
                     }
+                }
+                
+                // Add button debugging
+                debugText += '\n\nBUTTON DEBUG:\n';
+                const newFolderBtn = document.getElementById('new-folder-button');
+                const fileActions = document.querySelector('.file-actions');
+                
+                debugText += `- New Folder Button Exists: ${!!newFolderBtn}\n`;
+                if (newFolderBtn) {
+                    const styles = getComputedStyle(newFolderBtn);
+                    debugText += `- Display: ${styles.display}\n`;
+                    debugText += `- Visibility: ${styles.visibility}\n`;
+                    debugText += `- Opacity: ${styles.opacity}\n`;
+                    debugText += `- Position: ${styles.position}\n`;
+                    debugText += `- Z-Index: ${styles.zIndex}\n`;
+                }
+                
+                debugText += `- File Actions Container Exists: ${!!fileActions}\n`;
+                if (fileActions) {
+                    debugText += `- File Actions Children Count: ${fileActions.children.length}\n`;
+                    debugText += `- All Button IDs: ${Array.from(fileActions.children).map(btn => btn.id || btn.tagName).join(', ')}\n`;
                 }
                 
                 debugInfo.textContent = debugText;

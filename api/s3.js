@@ -398,14 +398,71 @@ module.exports.deleteObject = async (event) => {
     }
 
     console.log(`Deleting S3 object: ${decodedKey}`);
+    console.log(`Key type: ${typeof decodedKey}, value: "${decodedKey}", ends with /: ${decodedKey.endsWith('/')}`);
 
-    // Delete the object from S3
-    await s3.deleteObject({
-      Bucket: bucketName,
-      Key: decodedKey
-    }).promise();
-
-    console.log(`Successfully deleted: ${decodedKey}`);
+    // Check if this is a folder (ends with /)
+    const isFolder = decodedKey.endsWith('/');
+    console.log(`Is folder: ${isFolder}`);
+    
+    if (isFolder) {
+      // For folders, delete the .folderkeeper file that represents the folder
+      console.log(`Deleting folder: ${decodedKey}`);
+      
+      const folderKeeperKey = decodedKey + '.folderkeeper';
+      console.log(`Looking for folder keeper file: ${folderKeeperKey}`);
+      
+      try {
+        // Check if .folderkeeper file exists
+        await s3.headObject({ Bucket: bucketName, Key: folderKeeperKey }).promise();
+        console.log(`Found .folderkeeper file, deleting: ${folderKeeperKey}`);
+        
+        // Delete the .folderkeeper file
+        await s3.deleteObject({
+          Bucket: bucketName,
+          Key: folderKeeperKey
+        }).promise();
+        
+        console.log(`Successfully deleted folder by removing .folderkeeper file`);
+      } catch (error) {
+        if (error.code === 'NotFound') {
+          console.log(`No .folderkeeper file found, checking for other objects in folder`);
+          
+          // Fallback: list and delete all objects with that prefix
+          const listParams = {
+            Bucket: bucketName,
+            Prefix: decodedKey
+          };
+          
+          const objects = await s3.listObjectsV2(listParams).promise();
+          
+          if (objects.Contents && objects.Contents.length > 0) {
+            console.log(`Found ${objects.Contents.length} objects to delete in folder`);
+            console.log('Objects found:', objects.Contents.map(obj => obj.Key));
+            
+            // Delete all objects in the folder
+            const deleteObjects = objects.Contents.map(obj => ({ Key: obj.Key }));
+            const deleteResult = await s3.deleteObjects({
+              Bucket: bucketName,
+              Delete: { Objects: deleteObjects }
+            }).promise();
+            
+            console.log(`Successfully deleted ${deleteObjects.length} objects from folder`);
+          } else {
+            console.log('No objects found in folder to delete');
+          }
+        } else {
+          throw error;
+        }
+      }
+    } else {
+      // Delete single file
+      await s3.deleteObject({
+        Bucket: bucketName,
+        Key: decodedKey
+      }).promise();
+      
+      console.log(`Successfully deleted file: ${decodedKey}`);
+    }
 
     // Publish EventBridge event for file deletion
     try {

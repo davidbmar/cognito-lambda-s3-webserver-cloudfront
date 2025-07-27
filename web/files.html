@@ -955,13 +955,13 @@
                                 <i class="fas fa-home"></i>
                                 Dashboard
                             </a>
+                            <button class="btn btn-secondary" id="new-folder-button">
+                                <i class="fas fa-folder-plus"></i>
+                                New Folder
+                            </button>
                             <button class="btn btn-primary" id="upload-button">
                                 <i class="fas fa-upload"></i>
                                 Upload Files
-                            </button>
-                            <button class="btn btn-secondary" id="create-folder-btn" type="button">
-                                <i class="fas fa-folder-plus"></i>
-                                New Folder
                             </button>
                             <button class="btn btn-secondary" id="refresh-files">
                                 <i class="fas fa-sync-alt"></i>
@@ -975,7 +975,7 @@
                 <div id="file-container">
                     <div class="loading">
                         <i class="fas fa-spinner fa-spin"></i>
-                        Loading files...
+                        <div id="loading-status">Initializing...</div>
                     </div>
                 </div>
             </div>
@@ -1009,58 +1009,24 @@
         </div>
     </div>
 
-    <!-- Create Folder Modal -->
-    <div class="upload-modal" id="create-folder-modal" style="display: none;">
-        <div class="upload-modal-content" style="max-width: 400px;">
+    <!-- New Folder Modal -->
+    <div class="upload-modal" id="new-folder-modal" style="display: none;">
+        <div class="upload-modal-content">
             <div class="upload-modal-header">
-                <h3><i class="fas fa-folder-plus"></i> Create New Folder</h3>
-                <button class="close-modal" id="close-create-folder">&times;</button>
+                <h3>Create New Folder</h3>
+                <button class="close-modal" id="close-new-folder">&times;</button>
             </div>
             
-            <div style="padding: 20px;">
-                <div class="form-group">
-                    <label for="folder-name-input">Folder Name:</label>
-                    <input type="text" id="folder-name-input" class="folder-input" placeholder="Enter folder name..." maxlength="50">
-                    <small class="input-hint">Only letters, numbers, dots, and hyphens allowed</small>
-                </div>
-                
-                <div class="folder-actions">
-                    <button class="btn btn-secondary" id="cancel-folder">Cancel</button>
-                    <button class="btn btn-primary" id="confirm-create-folder">
-                        <i class="fas fa-plus"></i> Create Folder
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Delete Confirmation Modal -->
-    <div class="upload-modal" id="delete-confirmation-modal" style="display: none;">
-        <div class="upload-modal-content" style="max-width: 450px;">
-            <div class="upload-modal-header">
-                <h3><i class="fas fa-exclamation-triangle" style="color: #ef4444;"></i> Confirm Deletion</h3>
-                <button class="close-modal" id="close-delete-modal">&times;</button>
+            <div class="form-group">
+                <label for="folder-name-input">Folder Name</label>
+                <input type="text" id="folder-name-input" class="folder-input" placeholder="Enter folder name..." autocomplete="off">
+                <small class="input-hint">Enter a name for your new folder</small>
+                <div class="error-message" id="folder-error-message"></div>
             </div>
             
-            <div style="padding: 20px;">
-                <div class="delete-warning">
-                    <p>Are you sure you want to delete this file?</p>
-                    <div class="file-to-delete">
-                        <i class="fas fa-file" id="delete-file-icon"></i>
-                        <span id="delete-file-name">filename.txt</span>
-                    </div>
-                    <p class="warning-text">
-                        <i class="fas fa-exclamation-circle"></i>
-                        This action cannot be undone.
-                    </p>
-                </div>
-                
-                <div class="delete-actions">
-                    <button class="btn btn-secondary" id="cancel-delete">Cancel</button>
-                    <button class="btn btn-danger" id="confirm-delete">
-                        <i class="fas fa-trash"></i> Delete File
-                    </button>
-                </div>
+            <div class="folder-actions">
+                <button class="btn btn-secondary" id="cancel-folder">Cancel</button>
+                <button class="btn btn-primary" id="create-folder">Create Folder</button>
             </div>
         </div>
     </div>
@@ -1076,168 +1042,27 @@
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1000.0.min.js"></script>
     
     <script>
-        // Beautiful folder creation modal functionality
-        window.showCreateFolderModal = function() {
-            const modal = document.getElementById('create-folder-modal');
-            const input = document.getElementById('folder-name-input');
-            
-            // Reset the modal
-            input.value = '';
-            input.classList.remove('invalid', 'valid');
-            hideErrorMessage();
-            
-            // Show the modal
-            modal.style.display = 'flex';
-            
-            // Focus the input after a brief delay to ensure modal is visible
-            setTimeout(() => {
-                input.focus();
-            }, 100);
-        };
-
-        window.hideCreateFolderModal = function() {
-            const modal = document.getElementById('create-folder-modal');
-            modal.style.display = 'none';
-        };
-
-        function validateFolderName(name) {
-            if (!name || !name.trim()) {
-                return { valid: false, message: 'Folder name cannot be empty' };
-            }
-            
-            if (name.length > 50) {
-                return { valid: false, message: 'Folder name must be 50 characters or less' };
-            }
-            
-            // Check for invalid characters
-            const invalidChars = /[^a-zA-Z0-9.\-_\s]/;
-            if (invalidChars.test(name)) {
-                return { valid: false, message: 'Only letters, numbers, dots, hyphens, underscores, and spaces allowed' };
-            }
-            
-            // Check for reserved names
-            const reserved = ['con', 'aux', 'prn', 'nul', 'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9', 'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9'];
-            if (reserved.includes(name.toLowerCase())) {
-                return { valid: false, message: 'This is a reserved folder name' };
-            }
-            
-            return { valid: true };
-        }
-
-        function showErrorMessage(message) {
-            const input = document.getElementById('folder-name-input');
-            let errorDiv = input.parentNode.querySelector('.error-message');
-            
-            if (!errorDiv) {
-                errorDiv = document.createElement('div');
-                errorDiv.className = 'error-message';
-                input.parentNode.appendChild(errorDiv);
-            }
-            
-            errorDiv.textContent = message;
-            errorDiv.classList.add('show');
-            input.classList.add('invalid');
-            input.classList.remove('valid');
-        }
-
-        function hideErrorMessage() {
-            const input = document.getElementById('folder-name-input');
-            const errorDiv = input.parentNode.querySelector('.error-message');
-            
-            if (errorDiv) {
-                errorDiv.classList.remove('show');
-            }
-            
-            input.classList.remove('invalid');
-        }
-
-        async function createFolderFromModal() {
-            const input = document.getElementById('folder-name-input');
-            const createBtn = document.getElementById('confirm-create-folder');
-            const folderName = input.value.trim();
-            
-            // Validate input
-            const validation = validateFolderName(folderName);
-            if (!validation.valid) {
-                showErrorMessage(validation.message);
-                return;
-            }
-
-            // Show loading state
-            createBtn.disabled = true;
-            createBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
-
-            try {
-                // Sanitize folder name for S3
-                const sanitizedName = folderName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9.\-_]/g, '');
-                const currentPath = window.currentPath || '';
-                const fullPath = currentPath ? `${currentPath}${sanitizedName}/` : `${sanitizedName}/`;
-
-                const token = localStorage.getItem('id_token');
-                if (!token) {
-                    throw new Error('Authentication token not found');
-                }
-
-                // Create folder by uploading an empty placeholder file
-                const response = await fetch('/api/s3/upload', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        fileName: `${fullPath}.folderkeeper`,
-                        fileType: 'text/plain'
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Failed to create folder: ${response.statusText}`);
-                }
-
-                const data = await response.json();
-                
-                // Upload empty content to create the folder structure
-                const uploadResponse = await fetch(data.uploadUrl, {
-                    method: 'PUT',
-                    body: '',
-                    headers: {
-                        'Content-Type': 'text/plain'
-                    }
-                });
-
-                if (!uploadResponse.ok) {
-                    throw new Error(`Failed to upload folder marker: ${uploadResponse.statusText}`);
-                }
-
-                console.log('Folder created successfully:', fullPath);
-                
-                // Hide modal
-                window.hideCreateFolderModal();
-                
-                // Refresh file list to show the new folder
-                if (typeof listS3Files === 'function') {
-                    await listS3Files();
-                } else {
-                    window.location.reload();
-                }
-                
-            } catch (error) {
-                console.error('Error creating folder:', error);
-                showErrorMessage(`Failed to create folder: ${error.message}`);
-            } finally {
-                // Reset button state
-                createBtn.disabled = false;
-                createBtn.innerHTML = '<i class="fas fa-plus"></i> Create Folder';
-            }
-        }
 
         // Auto-load file manager on page load
+        function updateStatus(message) {
+            const statusEl = document.getElementById('loading-status');
+            if (statusEl) statusEl.textContent = message;
+            console.log('Status:', message);
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOMContentLoaded fired');
+            updateStatus('Checking authentication...');
+            
             // Check authentication
             const token = localStorage.getItem('id_token');
+            console.log('Token found:', !!token);
             if (!token) {
-                window.location.href = '/';
+                console.log('No token, redirecting to /');
+                updateStatus('Not authenticated - redirecting...');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
                 return;
             }
 
@@ -1248,10 +1073,14 @@
 
             // Initialize file manager
             setTimeout(() => {
+                updateStatus('Loading files...');
+                console.log('Initializing file manager...');
                 if (typeof listS3Files === 'function') {
+                    console.log('Calling listS3Files...');
                     listS3Files();
                 } else {
                     console.error('listS3Files function not available');
+                    updateStatus('Error: listS3Files function not available');
                 }
                 
                 // Update navigation elements
@@ -1341,105 +1170,68 @@
                 });
             }
 
-            // Create folder button - show beautiful modal
-            const createFolderBtn = document.getElementById('create-folder-btn');
-            if (createFolderBtn) {
-                createFolderBtn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation(); // Prevent any event bubbling
-                    window.showCreateFolderModal();
+            // New Folder button and modal
+            const newFolderButton = document.getElementById('new-folder-button');
+            const newFolderModal = document.getElementById('new-folder-modal');
+            const closeNewFolder = document.getElementById('close-new-folder');
+            const cancelFolder = document.getElementById('cancel-folder');
+            const createFolder = document.getElementById('create-folder');
+            const folderNameInput = document.getElementById('folder-name-input');
+            const folderErrorMessage = document.getElementById('folder-error-message');
+
+            // Show new folder modal
+            if (newFolderButton) {
+                newFolderButton.addEventListener('click', () => {
+                    newFolderModal.style.display = 'flex';
+                    folderNameInput.value = '';
+                    folderNameInput.focus();
+                    clearFolderError();
                 });
             }
 
-            // Modal event listeners
-            const createFolderModal = document.getElementById('create-folder-modal');
-            const closeFolderModal = document.getElementById('close-create-folder');
-            const cancelFolderBtn = document.getElementById('cancel-folder');
-            const confirmCreateBtn = document.getElementById('confirm-create-folder');
-            const folderNameInput = document.getElementById('folder-name-input');
-
-            // Delete modal elements
-            const deleteModal = document.getElementById('delete-confirmation-modal');
-            const closeDeleteModal = document.getElementById('close-delete-modal');
-            const cancelDeleteBtn = document.getElementById('cancel-delete');
-            const confirmDeleteBtn = document.getElementById('confirm-delete');
-
-            // Create Folder Modal handlers
-            if (closeFolderModal) {
-                closeFolderModal.addEventListener('click', window.hideCreateFolderModal);
-            }
-            if (cancelFolderBtn) {
-                cancelFolderBtn.addEventListener('click', window.hideCreateFolderModal);
+            // Close new folder modal
+            function closeNewFolderModal() {
+                newFolderModal.style.display = 'none';
+                folderNameInput.value = '';
+                clearFolderError();
             }
 
-            // Delete Modal handlers
-            if (closeDeleteModal) {
-                closeDeleteModal.addEventListener('click', window.hideDeleteConfirmationModal);
+            if (closeNewFolder) {
+                closeNewFolder.addEventListener('click', closeNewFolderModal);
             }
-            if (cancelDeleteBtn) {
-                cancelDeleteBtn.addEventListener('click', window.hideDeleteConfirmationModal);
-            }
-            if (confirmDeleteBtn) {
-                confirmDeleteBtn.addEventListener('click', confirmDeleteFile);
+
+            if (cancelFolder) {
+                cancelFolder.addEventListener('click', closeNewFolderModal);
             }
 
             // Click outside modal to close
-            if (createFolderModal) {
-                createFolderModal.addEventListener('click', function(e) {
-                    if (e.target === createFolderModal) {
-                        window.hideCreateFolderModal();
-                    }
-                });
-            }
-            if (deleteModal) {
-                deleteModal.addEventListener('click', function(e) {
-                    if (e.target === deleteModal) {
-                        window.hideDeleteConfirmationModal();
+            if (newFolderModal) {
+                newFolderModal.addEventListener('click', (e) => {
+                    if (e.target === newFolderModal) {
+                        closeNewFolderModal();
                     }
                 });
             }
 
-            // Create folder on button click
-            if (confirmCreateBtn) {
-                confirmCreateBtn.addEventListener('click', createFolderFromModal);
+            // Create folder functionality
+            if (createFolder) {
+                createFolder.addEventListener('click', handleCreateFolder);
             }
 
-            // Create folder on Enter key
+            // Enter key to create folder
             if (folderNameInput) {
-                folderNameInput.addEventListener('keypress', function(e) {
+                folderNameInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') {
-                        e.preventDefault();
-                        createFolderFromModal();
+                        handleCreateFolder();
                     }
                 });
 
                 // Real-time validation
-                folderNameInput.addEventListener('input', function() {
-                    const validation = validateFolderName(this.value);
-                    if (validation.valid) {
-                        this.classList.remove('invalid');
-                        this.classList.add('valid');
-                        hideErrorMessage();
-                    } else if (this.value.trim()) {
-                        showErrorMessage(validation.message);
-                    } else {
-                        this.classList.remove('invalid', 'valid');
-                        hideErrorMessage();
-                    }
-                });
+                folderNameInput.addEventListener('input', validateFolderName);
             }
 
-            // ESC key to close modals
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') {
-                    if (createFolderModal.style.display === 'flex') {
-                        window.hideCreateFolderModal();
-                    }
-                    if (deleteModal.style.display === 'flex') {
-                        window.hideDeleteConfirmationModal();
-                    }
-                }
-            });
+
+
 
             // Upload queue buttons
             const startUploadBtn = document.getElementById('start-upload');
@@ -1566,11 +1358,29 @@
         function extractFoldersAndFiles(files) {
             const folders = new Set();
             const fileList = [];
+            const currentPath = window.currentPath || '';
+            
+            console.log('extractFoldersAndFiles called with', files.length, 'files');
+            console.log('Current path:', currentPath);
+            
+            // Extract userId from first file's key
+            let userPrefix = '';
+            if (files.length > 0 && files[0].key) {
+                const firstKey = files[0].key;
+                if (firstKey.startsWith('users/')) {
+                    const parts = firstKey.split('/');
+                    if (parts.length >= 2) {
+                        userPrefix = `users/${parts[1]}/`;
+                    }
+                }
+            }
+            console.log('User prefix:', userPrefix);
             
             files.forEach(file => {
                 const fullKey = file.key || file;
+                console.log('Processing file:', fullKey);
                 
-                // Remove user prefix first
+                // Remove user prefix first to get relative path
                 let relativePath = fullKey;
                 if (relativePath.startsWith('users/')) {
                     const pathParts = relativePath.split('/');
@@ -1580,51 +1390,51 @@
                     }
                 }
                 
-                // If we're in a subfolder, check if this file belongs to current path
-                if (window.currentPath && !relativePath.startsWith(window.currentPath)) {
-                    return;
+                console.log('Relative path:', relativePath);
+                
+                // If we're in a subfolder, only show items in current directory
+                if (currentPath) {
+                    if (!relativePath.startsWith(currentPath)) {
+                        return; // Skip files not in current path
+                    }
+                    // Remove current path prefix
+                    relativePath = relativePath.substring(currentPath.length);
                 }
                 
-                // Remove current path prefix
-                const pathWithoutPrefix = window.currentPath ? relativePath.replace(window.currentPath, '') : relativePath;
+                console.log('Path after prefix removal:', relativePath);
                 
-                // Split path into parts
-                const pathParts = pathWithoutPrefix.split('/').filter(p => p.length > 0);
+                // Split into path components
+                const pathParts = relativePath.split('/').filter(p => p.length > 0);
+                console.log('Path parts:', pathParts);
                 
-                if (pathParts.length >= 2) {
-                    // This file is inside a subfolder
-                    const folderName = pathParts[0];
-                    const fileName = pathParts[1];
-                    
-                    // If this is a .folder marker file, extract the folder name
-                    if (fileName === '.folder') {
-                        folders.add(folderName);
-                    } else {
-                        // Regular file in subfolder - still add the folder
-                        folders.add(folderName);
-                    }
+                if (pathParts.length === 0) {
+                    return; // Skip empty paths
                 } else if (pathParts.length === 1) {
                     // This is a file in the current directory
                     const fileName = pathParts[0];
-                    if (fileName !== '.folder' && fileName.length > 0) {
-                        // Only add actual files, skip any stray .folder files
-                        fileList.push({
-                            ...file,
-                            displayKey: fileName,
-                            isFolder: false
-                        });
-                    }
+                    fileList.push({
+                        ...file,
+                        displayKey: fileName,
+                        isFolder: false
+                    });
+                } else {
+                    // This file is in a subdirectory - add the first level as a folder
+                    const folderName = pathParts[0];
+                    folders.add(folderName);
                 }
             });
             
             // Convert folders to file-like objects
             const folderObjects = Array.from(folders).map(folderName => ({
-                key: window.currentPath + folderName + '/',
+                key: userPrefix + currentPath + folderName + '/',
                 displayKey: folderName,
                 size: 0,
                 lastModified: new Date(),
                 isFolder: true
             }));
+            
+            console.log('Found folders:', Array.from(folders));
+            console.log('Found files:', fileList.map(f => f.displayKey));
             
             // Sort: folders first, then files
             const sortedFolders = folderObjects.sort((a, b) => a.displayKey.localeCompare(b.displayKey));
@@ -1638,20 +1448,23 @@
             const idToken = localStorage.getItem('id_token');
             const fileContainer = document.getElementById('file-container');
             
+            updateStatus('Setting up...');
             updateBreadcrumb();
             
             if (!idToken) {
+                updateStatus('Not authenticated');
                 fileContainer.innerHTML = '<div class="empty-state"><p>You must be logged in to access files.</p></div>';
                 return;
             }
             
             try {
+                updateStatus('Calling API...');
                 console.log('Making S3 list API call...');
                 
                 fileContainer.innerHTML = `
                     <div class="loading">
                         <i class="fas fa-spinner fa-spin"></i>
-                        Loading your files...
+                        <div id="loading-status">Making API call...</div>
                     </div>
                 `;
                 
@@ -1670,12 +1483,15 @@
                 }
                 
                 const data = await response.json();
+                console.log('API response data:', data);
                 
                 fileContainer.innerHTML = '';
                 
                 if (data.files && data.files.length > 0) {
+                    console.log('Processing', data.files.length, 'files');
                     // Extract folders and files for current directory
                     const items = extractFoldersAndFiles(data.files);
+                    console.log('Extracted items:', items);
                     
                     const fileList = document.createElement('div');
                     fileList.className = 'file-list';
@@ -1789,6 +1605,7 @@
                             });
                         }
                         
+                        
                         if (openBtn) {
                             openBtn.addEventListener('click', (e) => {
                                 e.stopPropagation();
@@ -1833,11 +1650,13 @@
                 
             } catch (error) {
                 console.error('Error calling S3 API:', error);
+                console.error('Error stack:', error.stack);
                 fileContainer.innerHTML = `
                     <div class="empty-state">
                         <i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i>
                         <h3>Error loading files</h3>
                         <p>${error.message}</p>
+                        <p><small>Check browser console for details</small></p>
                         <button class="btn btn-primary" onclick="listS3Files()">
                             <i class="fas fa-retry"></i>
                             Try Again
@@ -1893,76 +1712,23 @@
             }
         }
 
-        // Beautiful delete confirmation modal functionality
-        let pendingDeleteFile = null;
-
-        window.showDeleteConfirmationModal = function(fileKey, displayName, fileType = 'file') {
-            const modal = document.getElementById('delete-confirmation-modal');
-            const fileNameElement = document.getElementById('delete-file-name');
-            const fileIconElement = document.getElementById('delete-file-icon');
-            
-            // Store the file info for deletion
-            pendingDeleteFile = { key: fileKey, name: displayName, type: fileType };
-            
-            // Update modal content
-            fileNameElement.textContent = displayName;
-            
-            // Set appropriate icon based on file type
-            if (fileType === 'folder') {
-                fileIconElement.className = 'fas fa-folder';
-                fileIconElement.style.color = '#f59e0b';
-            } else if (displayName.match(/\.(jpg|jpeg|png|gif|bmp|svg)$/i)) {
-                fileIconElement.className = 'fas fa-image';
-                fileIconElement.style.color = '#10b981';
-            } else if (displayName.match(/\.(mp3|wav|ogg|webm|mp4|avi|mov)$/i)) {
-                fileIconElement.className = 'fas fa-play-circle';
-                fileIconElement.style.color = '#8b5cf6';
-            } else if (displayName.match(/\.(pdf|doc|docx|txt|md)$/i)) {
-                fileIconElement.className = 'fas fa-file-alt';
-                fileIconElement.style.color = '#ef4444';
-            } else {
-                fileIconElement.className = 'fas fa-file';
-                fileIconElement.style.color = '#6b7280';
+        // Delete file function
+        async function deleteFile(fileKey, displayName) {
+            if (!confirm(`Are you sure you want to delete "${displayName}"? This action cannot be undone.`)) {
+                return;
             }
             
-            // Show the modal
-            modal.style.display = 'flex';
-        };
-
-        window.hideDeleteConfirmationModal = function() {
-            const modal = document.getElementById('delete-confirmation-modal');
-            modal.style.display = 'none';
-            pendingDeleteFile = null;
-        };
-
-        async function confirmDeleteFile() {
-            if (!pendingDeleteFile) return;
+            const idToken = localStorage.getItem('id_token');
             
-            const deleteBtn = document.getElementById('confirm-delete');
-            const originalContent = deleteBtn.innerHTML;
-            
-            // Show loading state
-            deleteBtn.disabled = true;
-            deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+            if (!idToken) {
+                alert('You must be logged in to delete files.');
+                return;
+            }
             
             try {
-                const idToken = localStorage.getItem('id_token');
-                if (!idToken) {
-                    throw new Error('You must be logged in to delete files');
-                }
+                console.log(`Deleting file: ${fileKey}`);
                 
-                console.log(`Deleting file: ${pendingDeleteFile.key}`);
-                console.log(`File type: ${pendingDeleteFile.type}`);
-                
-                // For folders, we need to delete the .folderkeeper file
-                let keyToDelete = pendingDeleteFile.key;
-                if (pendingDeleteFile.type === 'folder' && keyToDelete.endsWith('/')) {
-                    keyToDelete = keyToDelete + '.folderkeeper';
-                    console.log(`Folder detected, deleting folderkeeper: ${keyToDelete}`);
-                }
-                
-                console.log(`Encoded key: ${encodeURIComponent(keyToDelete)}`);
-                const encodedKey = encodeURIComponent(keyToDelete);
+                const encodedKey = encodeURIComponent(fileKey);
                 const response = await fetch(`/api/s3/delete/${encodedKey}`, {
                     method: 'DELETE',
                     headers: {
@@ -1973,38 +1739,21 @@
                 
                 if (!response.ok) {
                     const errorText = await response.text();
-                    console.error(`Delete failed: ${response.status}`, errorText);
                     throw new Error(`Delete failed: ${response.status} - ${errorText}`);
                 }
                 
                 console.log('Delete successful');
                 
-                // Hide modal
-                window.hideDeleteConfirmationModal();
-                
                 // Refresh the file list
                 setTimeout(() => {
                     listS3Files();
-                }, 300);
+                }, 500);
                 
             } catch (error) {
                 console.error('Error deleting file:', error);
                 alert(`Failed to delete file: ${error.message}`);
-            } finally {
-                // Reset button state
-                deleteBtn.disabled = false;
-                deleteBtn.innerHTML = originalContent;
             }
         }
-
-        // Wrapper function for backwards compatibility
-        function deleteFile(fileKey, displayName) {
-            // Determine if this is a folder based on the key ending with '/'
-            const isFolder = fileKey.endsWith('/');
-            const fileType = isFolder ? 'folder' : 'file';
-            window.showDeleteConfirmationModal(fileKey, displayName, fileType);
-        }
-
 
         // Upload queue functionality
         let uploadQueue = [];
@@ -2174,6 +1923,148 @@
                 item.status = 'error';
                 updateUploadQueue();
                 alert(`Failed to upload ${item.name}: ${error.message}`);
+            }
+        }
+
+        // Folder validation functions
+        function clearFolderError() {
+            const folderNameInput = document.getElementById('folder-name-input');
+            const folderErrorMessage = document.getElementById('folder-error-message');
+            
+            if (folderNameInput) {
+                folderNameInput.classList.remove('invalid', 'valid');
+            }
+            if (folderErrorMessage) {
+                folderErrorMessage.textContent = '';
+                folderErrorMessage.classList.remove('show');
+            }
+        }
+
+        function showFolderError(message) {
+            const folderNameInput = document.getElementById('folder-name-input');
+            const folderErrorMessage = document.getElementById('folder-error-message');
+            
+            if (folderNameInput) {
+                folderNameInput.classList.add('invalid');
+                folderNameInput.classList.remove('valid');
+            }
+            if (folderErrorMessage) {
+                folderErrorMessage.textContent = message;
+                folderErrorMessage.classList.add('show');
+            }
+        }
+
+        function validateFolderName() {
+            const folderNameInput = document.getElementById('folder-name-input');
+            const folderName = folderNameInput.value.trim();
+            
+            clearFolderError();
+            
+            if (folderName.length === 0) {
+                return false;
+            }
+            
+            // Check for invalid characters
+            const invalidChars = /[<>:"/\\|?*]/;
+            if (invalidChars.test(folderName)) {
+                showFolderError('Folder name contains invalid characters');
+                return false;
+            }
+            
+            // Check for reserved names
+            const reservedNames = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'];
+            if (reservedNames.includes(folderName.toUpperCase())) {
+                showFolderError('This folder name is reserved and cannot be used');
+                return false;
+            }
+            
+            // Check length
+            if (folderName.length > 255) {
+                showFolderError('Folder name is too long (maximum 255 characters)');
+                return false;
+            }
+            
+            // Mark as valid
+            folderNameInput.classList.add('valid');
+            folderNameInput.classList.remove('invalid');
+            return true;
+        }
+
+        // Handle folder creation
+        async function handleCreateFolder() {
+            const folderNameInput = document.getElementById('folder-name-input');
+            const folderName = folderNameInput.value.trim();
+            
+            if (!validateFolderName()) {
+                return;
+            }
+            
+            if (folderName.length === 0) {
+                showFolderError('Please enter a folder name');
+                return;
+            }
+            
+            const idToken = localStorage.getItem('id_token');
+            if (!idToken) {
+                showFolderError('You must be logged in to create folders');
+                return;
+            }
+            
+            try {
+                // Get current path from global variable
+                const currentPath = window.currentPath || '';
+                const fullFolderPath = currentPath + folderName + '/';
+                
+                // Create folder by uploading an empty file with the folder path
+                // This is a common pattern for creating "folders" in S3
+                const response = await fetch('/api/s3/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fileName: fullFolderPath + '.folder',
+                        contentType: 'text/plain',
+                        fileSize: 0
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to create folder: ${response.status}`);
+                }
+                
+                const uploadData = await response.json();
+                
+                // Upload empty content to create the folder marker
+                const uploadResponse = await fetch(uploadData.uploadUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    },
+                    body: ''
+                });
+                
+                if (!uploadResponse.ok) {
+                    throw new Error(`Folder creation failed: ${uploadResponse.status}`);
+                }
+                
+                // Close modal and refresh file list
+                const newFolderModal = document.getElementById('new-folder-modal');
+                if (newFolderModal) {
+                    newFolderModal.style.display = 'none';
+                }
+                
+                // Refresh file list
+                setTimeout(() => {
+                    if (typeof listS3Files === 'function') {
+                        listS3Files();
+                    }
+                }, 500);
+                
+            } catch (error) {
+                console.error('Error creating folder:', error);
+                showFolderError(`Failed to create folder: ${error.message}`);
             }
         }
 
