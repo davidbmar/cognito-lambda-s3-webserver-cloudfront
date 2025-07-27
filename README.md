@@ -76,7 +76,8 @@ aws cognito-idp admin-set-user-password \
 
 ### 4. Access Your Applications
 After deployment, you'll receive URLs for:
-- **📁 File Manager**: `https://your-distribution.cloudfront.net`
+- **📊 Dashboard**: `https://your-distribution.cloudfront.net` (app selection landing page)
+- **📁 File Manager**: `https://your-distribution.cloudfront.net/files.html` (direct access)
 - **🎤 Audio Recorder**: `https://your-distribution.cloudfront.net/audio.html`
 
 ## 🏗️ Architecture Overview
@@ -154,7 +155,8 @@ All file operations automatically publish structured events:
 │   ├── s3.js                 # File management operations
 │   └── data.js               # Basic API endpoints
 ├── web/
-│   ├── index.html            # Dashboard and file manager
+│   ├── index.html            # Dashboard with app selection
+│   ├── files.html            # Standalone file manager (direct access)
 │   ├── audio.html.template   # Audio recorder interface  
 │   ├── app.js.template       # Main application logic
 │   └── audio-ui-styles.css   # Audio-specific styling

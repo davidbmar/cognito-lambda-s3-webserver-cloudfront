@@ -1473,6 +1473,70 @@
             }
         }
 
+        // Create new folder functionality
+        async function createFolder() {
+            const folderName = prompt('Enter folder name:');
+            if (!folderName || !folderName.trim()) {
+                return;
+            }
+
+            const sanitizedName = folderName.trim().replace(/[^a-zA-Z0-9.-]/g, '_');
+            if (sanitizedName !== folderName.trim()) {
+                alert('Folder name has been sanitized to: ' + sanitizedName);
+            }
+
+            const currentPath = currentFolder || '';
+            const fullPath = currentPath ? `${currentPath}/${sanitizedName}/` : `${sanitizedName}/`;
+
+            try {
+                const token = localStorage.getItem('id_token');
+                if (!token) {
+                    throw new Error('Authentication token not found');
+                }
+
+                // Create folder by uploading an empty placeholder file
+                const response = await fetch('/api/s3/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        fileName: `${fullPath}.folderkeeper`,
+                        fileType: 'text/plain'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to create folder: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                
+                // Upload empty content to create the folder structure
+                const uploadResponse = await fetch(data.uploadUrl, {
+                    method: 'PUT',
+                    body: '',
+                    headers: {
+                        'Content-Type': 'text/plain'
+                    }
+                });
+
+                if (!uploadResponse.ok) {
+                    throw new Error(`Failed to upload folder marker: ${uploadResponse.statusText}`);
+                }
+
+                console.log('Folder created successfully:', fullPath);
+                
+                // Refresh file list to show the new folder
+                await listS3Files();
+                
+            } catch (error) {
+                console.error('Error creating folder:', error);
+                alert(`Failed to create folder: ${error.message}`);
+            }
+        }
+
         // Upload queue functionality
         let uploadQueue = [];
 

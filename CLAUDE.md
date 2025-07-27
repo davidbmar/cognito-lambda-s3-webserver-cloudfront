@@ -45,7 +45,8 @@ npm run typecheck
 - `api/eventbridge-utils.js` - EventBridge event publishing utilities
 
 ### Web Application (`web/` directory):
-- `index.html` - Main file manager interface
+- `index.html` - Dashboard with app selection landing page
+- `files.html` - Standalone file manager with direct access (no dashboard redirect)
 - `audio.html` - Audio recording interface (React-based)
 - `app.js` - Main application logic with authentication
 - `audio-ui-styles.css` - Audio-specific styles with mobile optimizations
