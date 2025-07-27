@@ -1952,8 +1952,17 @@
                 }
                 
                 console.log(`Deleting file: ${pendingDeleteFile.key}`);
+                console.log(`File type: ${pendingDeleteFile.type}`);
                 
-                const encodedKey = encodeURIComponent(pendingDeleteFile.key);
+                // For folders, we need to delete the .folderkeeper file
+                let keyToDelete = pendingDeleteFile.key;
+                if (pendingDeleteFile.type === 'folder' && keyToDelete.endsWith('/')) {
+                    keyToDelete = keyToDelete + '.folderkeeper';
+                    console.log(`Folder detected, deleting folderkeeper: ${keyToDelete}`);
+                }
+                
+                console.log(`Encoded key: ${encodeURIComponent(keyToDelete)}`);
+                const encodedKey = encodeURIComponent(keyToDelete);
                 const response = await fetch(`/api/s3/delete/${encodedKey}`, {
                     method: 'DELETE',
                     headers: {
@@ -1963,7 +1972,9 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`Delete failed: ${response.status}`);
+                    const errorText = await response.text();
+                    console.error(`Delete failed: ${response.status}`, errorText);
+                    throw new Error(`Delete failed: ${response.status} - ${errorText}`);
                 }
                 
                 console.log('Delete successful');
@@ -1988,7 +1999,10 @@
 
         // Wrapper function for backwards compatibility
         function deleteFile(fileKey, displayName) {
-            window.showDeleteConfirmationModal(fileKey, displayName);
+            // Determine if this is a folder based on the key ending with '/'
+            const isFolder = fileKey.endsWith('/');
+            const fileType = isFolder ? 'folder' : 'file';
+            window.showDeleteConfirmationModal(fileKey, displayName, fileType);
         }
 
 
