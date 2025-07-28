@@ -82,7 +82,8 @@ module.exports.uploadChunk = async (event) => {
 
     // Publish EventBridge event for audio upload
     try {
-      const fileSize = parsedBody.fileSize || 0;
+      const fileSize = body.fileSize || 0;
+      const fileName = `chunk-${paddedChunkNumber}.webm`;
       const eventId = await createUploadEvent(userId, email, fileName, s3Key, 'audio/webm', fileSize);
       console.log(`Published audio upload event with ID: ${eventId}`);
     } catch (eventError) {

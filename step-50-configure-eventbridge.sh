@@ -126,31 +126,30 @@ else
     # Add the require statement at the top
     sed -i "/'use strict';/a const { createUploadEvent } = require('./eventbridge-utils');" "$AUDIO_JS"
     
-    # Add event publishing after successful URL generation
-    # This is complex, so we'll create a patch
-    cat > audio-eventbridge.patch << 'EOF'
---- audio.js.orig
-+++ audio.js
-@@ -93,6 +93,18 @@
-     
-     console.log(\`Generated upload URL for \${s3Key}\`);
-     
-+    // Publish EventBridge event for audio upload
-+    try {
-+      const fileSize = parseInt(event.body ? JSON.parse(event.body).fileSize : 0) || 0;
-+      const eventId = await createUploadEvent(userId, email, fileName, s3Key, 'audio/webm', fileSize);
-+      console.log(\`Published audio upload event with ID: \${eventId}\`);
-+    } catch (eventError) {
-+      // Don't fail the upload if event publishing fails
-+      console.warn('Failed to publish audio upload event:', eventError.message);
-+    }
-+    
-     return {
-       statusCode: 200,
-       headers: {
+    # Add event publishing after the upload URL generation
+    # Look for the line with "Generated upload URL for" and add the event publishing code after it
+    
+    # Create a temporary file with the EventBridge integration
+    cat > /tmp/audio-eventbridge-addition.txt << 'EOF'
+
+    // Publish EventBridge event for audio upload
+    try {
+      const fileSize = body.fileSize || 0;
+      const fileName = \`chunk-\${paddedChunkNumber}.webm\`;
+      const eventId = await createUploadEvent(userId, email, fileName, s3Key, 'audio/webm', fileSize);
+      console.log(\`Published audio upload event with ID: \${eventId}\`);
+    } catch (eventError) {
+      // Don't fail the upload if event publishing fails
+      console.warn('Failed to publish audio upload event:', eventError.message);
+    }
 EOF
     
-    # Apply the patch (this is a simplified version - in production use proper patching)
+    # Use sed to insert the EventBridge code after the "Generated upload URL" log
+    sed -i '/console.log(`Generated upload URL for ${s3Key}`);/r /tmp/audio-eventbridge-addition.txt' "$AUDIO_JS"
+    
+    # Clean up temp file
+    rm -f /tmp/audio-eventbridge-addition.txt
+    
     echo "✅ Updated audio.js with EventBridge integration"
 fi
 
