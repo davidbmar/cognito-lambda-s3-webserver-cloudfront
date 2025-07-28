@@ -2,6 +2,7 @@
 
 const AWS = require('aws-sdk');
 const s3 = new AWS.S3();
+const { createUploadEvent } = require('./eventbridge-utils');
 
 // Generate pre-signed URL for audio chunk upload
 module.exports.uploadChunk = async (event) => {
@@ -78,6 +79,16 @@ module.exports.uploadChunk = async (event) => {
     });
 
     console.log(`Generated upload URL for ${s3Key}`);
+
+    // Publish EventBridge event for audio upload
+    try {
+      const fileSize = parsedBody.fileSize || 0;
+      const eventId = await createUploadEvent(userId, email, fileName, s3Key, 'audio/webm', fileSize);
+      console.log(`Published audio upload event with ID: ${eventId}`);
+    } catch (eventError) {
+      // Don't fail the upload if event publishing fails
+      console.warn('Failed to publish audio upload event:', eventError.message);
+    }
 
     return {
       statusCode: 200,

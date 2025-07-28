@@ -10,7 +10,8 @@ declare -A SCRIPT_SEQUENCE=(
     ["step-22-update-cognito-client.sh"]="step-25-update-web-files.sh"
     ["step-25-update-web-files.sh"]="step-30-create-user.sh"
     ["step-30-create-user.sh"]="step-40-test.sh"
-    ["step-40-test.sh"]="complete"
+    ["step-40-test.sh"]="step-50-configure-eventbridge.sh"
+    ["step-50-configure-eventbridge.sh"]="complete"
 )
 
 declare -A SCRIPT_DESCRIPTIONS=(
@@ -21,6 +22,7 @@ declare -A SCRIPT_DESCRIPTIONS=(
     ["step-25-update-web-files.sh"]="Deploy web interface with configured endpoints"
     ["step-30-create-user.sh"]="Create test Cognito user"
     ["step-40-test.sh"]="Test application functionality"
+    ["step-50-configure-eventbridge.sh"]="Configure EventBridge integration for event publishing"
     ["step-99-cleanup.sh"]="Clean up AWS resources"
 )
 
