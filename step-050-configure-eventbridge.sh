@@ -1,30 +1,45 @@
 #!/bin/bash
+# step-050-configure-eventbridge.sh - Configure EventBridge Integration
+# Prerequisites: step-040-test.sh (recommended) or step-025-update-web-files.sh
+# Outputs: EventBridge configuration for event publishing
 
-# Step 50: Configure EventBridge Integration
-# This script configures the application to publish events to EventBridge
+# Source framework libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-handling.sh" || { echo "Error handling library not found"; exit 1; }
+source "$SCRIPT_DIR/step-navigation.sh" || { echo "Navigation library not found"; exit 1; }
 
-set -e
+SCRIPT_NAME="step-050-configure-eventbridge"
+setup_error_handling "$SCRIPT_NAME"
+create_checkpoint "$SCRIPT_NAME" "in_progress" "$SCRIPT_NAME"
 
-# Source the common sequence functions
-source ./script-sequence.sh
-
-echo "🔄 Step 50: Configuring EventBridge Integration"
-echo "=================================================="
-echo
-
-# Display what this script does
-print_script_purpose
-
-# Load configuration using common function
-if ! load_config; then
+# Validate prerequisites
+if ! validate_prerequisites "step-050-configure-eventbridge.sh"; then
+    log_error "Prerequisites not met" "$SCRIPT_NAME"
     exit 1
 fi
 
-# Check prerequisites
-echo "📋 Checking prerequisites..."
+# Show step purpose
+show_step_purpose "step-050-configure-eventbridge.sh"
 
-if ! command -v aws >/dev/null 2>&1; then
-    echo "❌ AWS CLI is not installed. Please install it first."
+echo -e "${CYAN}=================================================="
+echo -e "       CloudFront Cognito Serverless Application"
+echo -e "            EVENTBRIDGE CONFIGURATION"
+echo -e "==================================================${NC}"
+echo
+log_info "Starting EventBridge configuration" "$SCRIPT_NAME"
+
+# Load configuration
+if [ ! -f .env ]; then
+    log_error ".env file not found. Please run step-020-deploy.sh first." "$SCRIPT_NAME"
+    exit 1
+fi
+
+source .env
+
+# Check prerequisites
+log_info "Checking prerequisites" "$SCRIPT_NAME"
+
+if ! check_command_exists "aws" "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html" "$SCRIPT_NAME"; then
     exit 1
 fi
 
@@ -162,30 +177,30 @@ export EVENT_BUS_NAME="$EVENT_BUS_NAME"
 # Deploy
 npx serverless deploy --stage "$STAGE"
 
+# Mark step as completed
+create_checkpoint "$SCRIPT_NAME" "completed" "$SCRIPT_NAME"
+
 echo
-echo "✅ EventBridge integration configured successfully!"
+log_success "EventBridge integration configured successfully!" "$SCRIPT_NAME"
 echo
 
 # Verify deployment
-echo "🔍 Verifying deployment..."
+log_info "Verifying deployment" "$SCRIPT_NAME"
 FUNCTION_NAME="${APP_NAME}-${STAGE}-uploadAudioChunk"
 
 if aws lambda get-function-configuration --function-name "$FUNCTION_NAME" --query 'Environment.Variables.EVENT_BUS_NAME' --output text | grep -q "$EVENT_BUS_NAME"; then
-    echo "✅ EVENT_BUS_NAME is properly configured in Lambda"
+    log_success "EVENT_BUS_NAME is properly configured in Lambda" "$SCRIPT_NAME"
 else
-    echo "⚠️  EVENT_BUS_NAME may not be set correctly"
+    log_warning "EVENT_BUS_NAME may not be set correctly" "$SCRIPT_NAME"
 fi
 
 echo
-echo "🎯 Next steps:"
-echo "   1. Test audio recording at $CLOUDFRONT_URL/audio.html"
-echo "   2. Check EventBridge logs with:"
-echo "      aws logs tail /aws/lambda/dev-event-logger --since 5m"
-echo "   3. Set up the transcription service to process audio events"
+echo -e "${BLUE}🎯 Next steps:${NC}"
+echo -e "${BLUE}   1. Test audio recording at ${GREEN}$CLOUDFRONT_URL/audio.html${NC}"
+echo -e "${BLUE}   2. Check EventBridge logs with:${NC}"
+echo -e "${CYAN}      aws logs tail /aws/lambda/dev-event-logger --since 5m${NC}"
+echo -e "${BLUE}   3. Set up the transcription service to process audio events${NC}"
 echo
 
-# Update setup status
-update_setup_status
-
-# Print next steps using common function
-print_next_steps
+# Show next step
+show_next_step "step-050-configure-eventbridge.sh" "$(dirname "$0")"

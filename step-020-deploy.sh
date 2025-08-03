@@ -1,19 +1,37 @@
 #!/bin/bash
-# step-20-deploy.sh - Deploy the CloudFront Cognito Serverless Application with OAC
-# Run this script after step-10-setup.sh
+# step-020-deploy.sh - Deploy the CloudFront Cognito Serverless Application with OAC
+# Prerequisites: step-015-validate.sh (recommended)
+# Outputs: Deployed AWS infrastructure with CloudFormation stack
 
-set -e # Exit on any error
+# Source framework libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-handling.sh" || { echo "Error handling library not found"; exit 1; }
+source "$SCRIPT_DIR/step-navigation.sh" || { echo "Navigation library not found"; exit 1; }
+
+SCRIPT_NAME="step-020-deploy"
+setup_error_handling "$SCRIPT_NAME"
+create_checkpoint "$SCRIPT_NAME" "in_progress" "$SCRIPT_NAME"
+
+# Validate prerequisites
+if ! validate_prerequisites "step-020-deploy.sh"; then
+    log_error "Prerequisites not met" "$SCRIPT_NAME"
+    exit 1
+fi
+
+# Show step purpose
+show_step_purpose "step-020-deploy.sh"
 
 # Welcome banner
-echo "=================================================="
-echo "   CloudFront Cognito Serverless Application     "
-echo "              Deployment Script                  "
-echo "=================================================="
+echo -e "${CYAN}=================================================="
+echo -e "       CloudFront Cognito Serverless Application"
+echo -e "              INFRASTRUCTURE DEPLOYMENT"
+echo -e "==================================================${NC}"
 echo
+log_info "Starting infrastructure deployment" "$SCRIPT_NAME"
 
 # Check if .env exists
 if [ ! -f .env ]; then
-    echo "❌ .env file not found. Please run step-10-setup.sh first."
+    log_error ".env file not found. Please run step-010-setup.sh first." "$SCRIPT_NAME"
     exit 1
 fi
 
@@ -22,13 +40,13 @@ source .env
 
 # Validate required variables
 if [ -z "$APP_NAME" ] || [ -z "$STAGE" ] || [ -z "$S3_BUCKET_NAME" ] || [ -z "$COGNITO_DOMAIN" ]; then
-    echo "❌ Missing required variables in .env file. Please run step-10-setup.sh again."
+    log_error "Missing required variables in .env file. Please run step-010-setup.sh again." "$SCRIPT_NAME"
     exit 1
 fi
+log_success "Environment variables validated" "$SCRIPT_NAME"
 
 # Check for AWS CLI configuration
-if ! aws sts get-caller-identity &> /dev/null; then
-    echo "❌ AWS CLI is not configured properly. Please run 'aws configure' first."
+if ! check_aws_credentials "$SCRIPT_NAME"; then
     exit 1
 fi
 
@@ -303,24 +321,26 @@ else
     echo "⚠️ Warning: Could not determine CloudFront distribution ID"
 fi
 
+# Mark deployment as completed
+create_checkpoint "$SCRIPT_NAME" "completed" "$SCRIPT_NAME"
+
 echo
-echo "✅ Deployment completed successfully!"
+log_success "Infrastructure deployment completed successfully!" "$SCRIPT_NAME"
 echo
-echo "🔗 Website URLs:"
-echo "   CloudFront: $CLOUDFRONT_URL"
-echo "   S3 Website: $WEBSITE_URL"
+echo -e "${BLUE}🔗 Website URLs:${NC}"
+echo -e "${GREEN}   CloudFront: $CLOUDFRONT_URL${NC}"
+echo -e "${BLUE}   S3 Website: $WEBSITE_URL${NC}"
 echo
-echo "📋 Your application details:"
-echo "   API Endpoint: $API_ENDPOINT"
-echo "   User Pool ID: $USER_POOL_ID"
-echo "   User Pool Client ID: $USER_POOL_CLIENT_ID"
-echo "   Identity Pool ID: $IDENTITY_POOL_ID"
-echo "   Cognito Domain: ${COGNITO_DOMAIN}.auth.${REGION}.amazoncognito.com"
+echo -e "${BLUE}📋 Your application details:${NC}"
+echo -e "${BLUE}   API Endpoint: $API_ENDPOINT${NC}"
+echo -e "${BLUE}   User Pool ID: $USER_POOL_ID${NC}"
+echo -e "${BLUE}   User Pool Client ID: $USER_POOL_CLIENT_ID${NC}"
+echo -e "${BLUE}   Identity Pool ID: $IDENTITY_POOL_ID${NC}"
+echo -e "${BLUE}   Cognito Domain: ${COGNITO_DOMAIN}.auth.${REGION}.amazoncognito.com${NC}"
 echo
-echo "⚠️ Note: It may take a few minutes for the CloudFront distribution to fully deploy."
-echo "⚠️ You need to create a user in the Cognito User Pool to test the authentication."
-echo "   Run './step-30-create-user.sh' to create a test user."
-echo
-echo "⚠️ IMPORTANT: Do not commit web/app.js to version control as it contains environment-specific values."
-echo "   Only commit web/app.js.template and let the deployment script generate app.js during deployment."
-echo "=================================================="
+echo -e "${YELLOW}⚠️ Note: It may take a few minutes for the CloudFront distribution to fully deploy.${NC}"
+echo -e "${YELLOW}⚠️ IMPORTANT: Do not commit web/app.js to version control as it contains environment-specific values.${NC}"
+echo -e "${YELLOW}   Only commit web/app.js.template and let the deployment script generate app.js during deployment.${NC}"
+
+# Show next step
+show_next_step "step-020-deploy.sh" "$(dirname "$0")"

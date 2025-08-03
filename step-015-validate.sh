@@ -1,24 +1,42 @@
 #!/bin/bash
-# step-15-validate.sh - Validates the completion of specific steps in the workflow
-# Run this after each step to verify everything is ready for the next step
+# step-015-validate.sh - Validates the completion of specific steps in the workflow
+# Prerequisites: step-010-setup.sh
+# Outputs: Validation results and readiness for deployment
 
-set -e # Exit on any error
+# Source framework libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-handling.sh" || { echo "Error handling library not found"; exit 1; }
+source "$SCRIPT_DIR/step-navigation.sh" || { echo "Navigation library not found"; exit 1; }
+
+SCRIPT_NAME="step-015-validate"
+setup_error_handling "$SCRIPT_NAME"
+create_checkpoint "$SCRIPT_NAME" "in_progress" "$SCRIPT_NAME"
+
+# Validate prerequisites
+if ! validate_prerequisites "step-015-validate.sh"; then
+    log_error "Prerequisites not met" "$SCRIPT_NAME"
+    exit 1
+fi
+
+# Show step purpose
+show_step_purpose "step-015-validate.sh"
 
 print_header() {
-  echo "=================================================="
-  echo "   CloudFront Cognito Serverless Application     "
-  echo "             Step Validation Tool                "
-  echo "=================================================="
+  echo -e "${CYAN}=================================================="
+  echo -e "       CloudFront Cognito Serverless Application"
+  echo -e "             CONFIGURATION VALIDATION"
+  echo -e "==================================================${NC}"
   echo
+  log_info "Starting configuration validation" "$SCRIPT_NAME"
 }
 
-# Validate that step-10-setup.sh ran correctly
+# Validate that step-010-setup.sh ran correctly
 validate_step_10() {
-  echo "🔍 Validating that step-10-setup.sh completed successfully..."
+  log_info "Validating step-010-setup.sh completion" "$SCRIPT_NAME"
   
   # Check if .env exists
   if [ ! -f .env ]; then
-    echo "❌ .env file not found. Please run step-10-setup.sh first."
+    log_error ".env file not found. Please run step-010-setup.sh first." "$SCRIPT_NAME"
     return 1
   fi
 
@@ -344,9 +362,14 @@ case $choice in
   4) check_dns_propagation ;;
   5) run_all_checks ;;
   *) 
-    echo "Invalid choice. Please enter a number between 1 and 5."
+    log_error "Invalid choice. Please enter a number between 1 and 5." "$SCRIPT_NAME"
     exit 1
     ;;
 esac
 
-echo "=================================================="
+# Mark step as completed
+create_checkpoint "$SCRIPT_NAME" "completed" "$SCRIPT_NAME"
+log_success "Validation completed" "$SCRIPT_NAME"
+
+# Show next step
+show_next_step "step-015-validate.sh" "$(dirname "$0")"

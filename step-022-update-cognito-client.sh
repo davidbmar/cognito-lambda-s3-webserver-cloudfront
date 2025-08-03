@@ -1,19 +1,37 @@
 #!/bin/bash
-# step-22-update-cognito-client.sh - Updates the Cognito User Pool Client to support implicit flow
-# Run this script after step-20-deploy.sh
+# step-022-update-cognito-client.sh - Updates the Cognito User Pool Client to support implicit flow
+# Prerequisites: step-020-deploy.sh
+# Outputs: Updated Cognito client configuration for authentication
 
-set -e # Exit on any error
+# Source framework libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-handling.sh" || { echo "Error handling library not found"; exit 1; }
+source "$SCRIPT_DIR/step-navigation.sh" || { echo "Navigation library not found"; exit 1; }
+
+SCRIPT_NAME="step-022-update-cognito-client"
+setup_error_handling "$SCRIPT_NAME"
+create_checkpoint "$SCRIPT_NAME" "in_progress" "$SCRIPT_NAME"
+
+# Validate prerequisites
+if ! validate_prerequisites "step-022-update-cognito-client.sh"; then
+    log_error "Prerequisites not met" "$SCRIPT_NAME"
+    exit 1
+fi
+
+# Show step purpose
+show_step_purpose "step-022-update-cognito-client.sh"
 
 # Welcome banner
-echo "=================================================="
-echo "   CloudFront Cognito Serverless Application     "
-echo "        Cognito Implicit Flow Configuration      "
-echo "=================================================="
+echo -e "${CYAN}=================================================="
+echo -e "       CloudFront Cognito Serverless Application"
+echo -e "        COGNITO AUTHENTICATION CONFIGURATION"
+echo -e "==================================================${NC}"
 echo
+log_info "Starting Cognito client configuration" "$SCRIPT_NAME"
 
 # Check if .env exists
 if [ ! -f .env ]; then
-    echo "❌ .env file not found. Please run step-20-deploy.sh first."
+    log_error ".env file not found. Please run step-020-deploy.sh first." "$SCRIPT_NAME"
     exit 1
 fi
 
@@ -22,13 +40,14 @@ source .env
 
 # Validate required variables
 if [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ] || [ -z "$CLOUDFRONT_URL" ]; then
-    echo "❌ Missing required variables in .env file. Please run step-20-deploy.sh first."
+    log_error "Missing required variables in .env file. Please run step-020-deploy.sh first." "$SCRIPT_NAME"
     exit 1
 fi
+log_success "Environment variables validated" "$SCRIPT_NAME"
 
-echo "🔄 Updating Cognito User Pool Client to support implicit flow..."
+log_info "Updating Cognito User Pool Client to support implicit flow" "$SCRIPT_NAME"
 
-aws cognito-idp update-user-pool-client \
+if retry_command 3 5 "$SCRIPT_NAME" aws cognito-idp update-user-pool-client \
   --user-pool-id "$USER_POOL_ID" \
   --client-id "$USER_POOL_CLIENT_ID" \
   --callback-urls "${CLOUDFRONT_URL}/callback.html" \
@@ -36,14 +55,20 @@ aws cognito-idp update-user-pool-client \
   --allowed-o-auth-flows "implicit" "code" \
   --allowed-o-auth-scopes "email" "openid" "profile" \
   --allowed-o-auth-flows-user-pool-client \
-  --supported-identity-providers "COGNITO"
+  --supported-identity-providers "COGNITO"; then
+    log_success "Cognito User Pool Client configuration updated" "$SCRIPT_NAME"
+else
+    log_error "Failed to update Cognito User Pool Client" "$SCRIPT_NAME"
+    exit 1
+fi
 
-echo "✅ Cognito User Pool Client updated successfully to use implicit flow!"
+# Mark step as completed
+create_checkpoint "$SCRIPT_NAME" "completed" "$SCRIPT_NAME"
+
+log_success "Cognito User Pool Client updated successfully!" "$SCRIPT_NAME"
 echo
-echo "You can now test the authentication flow by visiting your CloudFront URL:"
-echo "$CLOUDFRONT_URL"
-echo
-echo "Next steps:"
-echo "1. Run './step-30-create-user.sh' to create a test user if you haven't already"
-echo "2. Run './step-40-test.sh' to test your application"
-echo "=================================================="
+echo -e "${BLUE}You can now test the authentication flow at:${NC}"
+echo -e "${GREEN}$CLOUDFRONT_URL${NC}"
+
+# Show next step
+show_next_step "step-022-update-cognito-client.sh" "$(dirname "$0")"

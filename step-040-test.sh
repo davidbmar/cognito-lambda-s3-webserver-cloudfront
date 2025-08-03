@@ -1,19 +1,37 @@
 #!/bin/bash
-# step-40-test.sh - Tests the deployed application
-# Run this script after validating that steps 10, 20, and 30 completed successfully
+# step-040-test.sh - Tests the deployed application
+# Prerequisites: step-030-create-user.sh (recommended) or step-025-update-web-files.sh
+# Outputs: Test results and application functionality validation
 
-set -e # Exit on any error
+# Source framework libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-handling.sh" || { echo "Error handling library not found"; exit 1; }
+source "$SCRIPT_DIR/step-navigation.sh" || { echo "Navigation library not found"; exit 1; }
+
+SCRIPT_NAME="step-040-test"
+setup_error_handling "$SCRIPT_NAME"
+create_checkpoint "$SCRIPT_NAME" "in_progress" "$SCRIPT_NAME"
+
+# Validate prerequisites
+if ! validate_prerequisites "step-040-test.sh"; then
+    log_error "Prerequisites not met" "$SCRIPT_NAME"
+    exit 1
+fi
+
+# Show step purpose
+show_step_purpose "step-040-test.sh"
 
 # Welcome banner
-echo "=================================================="
-echo "   CloudFront Cognito Serverless Application     "
-echo "           Security and Function Tests           "
-echo "=================================================="
+echo -e "${CYAN}=================================================="
+echo -e "       CloudFront Cognito Serverless Application"
+echo -e "           SECURITY AND FUNCTION TESTS"
+echo -e "==================================================${NC}"
 echo
+log_info "Starting application testing" "$SCRIPT_NAME"
 
 # Check if .env exists
 if [ ! -f .env ]; then
-    echo "❌ .env file not found. Please run step-10-setup.sh and step-20-deploy.sh first."
+    log_error ".env file not found. Please run step-020-deploy.sh first." "$SCRIPT_NAME"
     exit 1
 fi
 
@@ -22,11 +40,12 @@ source .env
 
 # Validate required variables
 if [ -z "$CLOUDFRONT_URL" ] || [ -z "$USER_POOL_ID" ]; then
-    echo "❌ Missing required variables in .env file. Please run step-20-deploy.sh first."
+    log_error "Missing required variables in .env file. Please run step-020-deploy.sh first." "$SCRIPT_NAME"
     exit 1
 fi
+log_success "Environment variables validated" "$SCRIPT_NAME"
 
-echo "🔍 Testing application components..."
+log_info "Testing application components" "$SCRIPT_NAME"
 
 # Function to perform a URL check
 check_url() {
@@ -154,20 +173,31 @@ else
     STATUS_MESSAGE="Some checks require attention - see details below."
 fi
 
+# Mark step as completed
+create_checkpoint "$SCRIPT_NAME" "completed" "$SCRIPT_NAME"
+
 # Print summary
 echo
-echo "📋 Test Summary:"
-echo "   CloudFront Distribution: $([ "$CLOUDFRONT_OK" = true ] && echo "✅ Accessible" || echo "❌ Not accessible")"
-echo "   S3 Direct Access: $([ "$S3_OK" = true ] && echo "✅ Properly secured" || echo "❌ Security issue")"
-echo "   API Gateway: $([ "$API_OK" = true ] && echo "✅ Properly secured" || echo "❌ Security issue")"
-echo "   Cognito Domain: $([ "$COGNITO_OK" = true ] && echo "✅ Accessible" || echo "❌ Not accessible")"
-echo "   Users in Cognito: $([ "$USERS_OK" = true ] && echo "✅ User(s) exist" || echo "❌ No users")"
-echo "   SPA Routing: $([ "$SPA_OK" = true ] && echo "✅ Working" || echo "❌ Not working")"
+echo -e "${BLUE}📋 Test Summary:${NC}"
+echo -e "${BLUE}   CloudFront Distribution: $([ "$CLOUDFRONT_OK" = true ] && echo "${GREEN}✅ Accessible${NC}" || echo "${RED}❌ Not accessible${NC}")"
+echo -e "${BLUE}   S3 Direct Access: $([ "$S3_OK" = true ] && echo "${GREEN}✅ Properly secured${NC}" || echo "${RED}❌ Security issue${NC}")"
+echo -e "${BLUE}   API Gateway: $([ "$API_OK" = true ] && echo "${GREEN}✅ Properly secured${NC}" || echo "${RED}❌ Security issue${NC}")"
+echo -e "${BLUE}   Cognito Domain: $([ "$COGNITO_OK" = true ] && echo "${GREEN}✅ Accessible${NC}" || echo "${RED}❌ Not accessible${NC}")"
+echo -e "${BLUE}   Users in Cognito: $([ "$USERS_OK" = true ] && echo "${GREEN}✅ User(s) exist${NC}" || echo "${RED}❌ No users${NC}")"
+echo -e "${BLUE}   SPA Routing: $([ "$SPA_OK" = true ] && echo "${GREEN}✅ Working${NC}" || echo "${RED}❌ Not working${NC}")"
 echo
-echo "🏁 Overall Status: $OVERALL_STATUS"
+echo -e "${CYAN}🏁 Overall Status: $OVERALL_STATUS${NC}"
 echo
-echo "💡 $STATUS_MESSAGE"
+echo -e "${BLUE}💡 $STATUS_MESSAGE${NC}"
 echo
-echo "👉 Access your application at: $CLOUDFRONT_URL"
-echo "   Login with the user created in step-30-create-user.sh"
-echo "=================================================="
+echo -e "${BLUE}👉 Access your application at: ${GREEN}$CLOUDFRONT_URL${NC}"
+echo -e "${BLUE}   Login with the user created in step-030-create-user.sh${NC}"
+
+if [ "$OVERALL_STATUS" = "✅ ALL PASSED" ]; then
+    log_success "All tests passed successfully!" "$SCRIPT_NAME"
+else
+    log_warning "Some tests require attention" "$SCRIPT_NAME"
+fi
+
+# Show next step
+show_next_step "step-040-test.sh" "$(dirname "$0")"

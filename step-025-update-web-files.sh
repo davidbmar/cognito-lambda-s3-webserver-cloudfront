@@ -1,32 +1,48 @@
 #!/bin/bash
-# step-25-update-web-files.sh - Update web files after deployment
-# Run this script after step-20-deploy.sh when you've made changes to web files
+# step-025-update-web-files.sh - Update web files after deployment
+# Prerequisites: step-022-update-cognito-client.sh
+# Outputs: Updated web files deployed to S3 and CloudFront
 
-set -e # Exit on any error
+# Source framework libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-handling.sh" || { echo "Error handling library not found"; exit 1; }
+source "$SCRIPT_DIR/step-navigation.sh" || { echo "Navigation library not found"; exit 1; }
 
-# Source the common sequence functions
-source ./script-sequence.sh
+SCRIPT_NAME="step-025-update-web-files"
+setup_error_handling "$SCRIPT_NAME"
+create_checkpoint "$SCRIPT_NAME" "in_progress" "$SCRIPT_NAME"
 
-# Welcome banner
-echo "=================================================="
-echo "   CloudFront Cognito Serverless Application     "
-echo "              Web Files Update Script            "
-echo "=================================================="
-echo
-
-# Display what this script does
-print_script_purpose
-
-# Load configuration using common function
-if ! load_config; then
+# Validate prerequisites
+if ! validate_prerequisites "step-025-update-web-files.sh"; then
+    log_error "Prerequisites not met" "$SCRIPT_NAME"
     exit 1
 fi
+
+# Show step purpose
+show_step_purpose "step-025-update-web-files.sh"
+
+# Welcome banner
+echo -e "${CYAN}=================================================="
+echo -e "       CloudFront Cognito Serverless Application"
+echo -e "              WEB FILES DEPLOYMENT"
+echo -e "==================================================${NC}"
+echo
+log_info "Starting web files deployment" "$SCRIPT_NAME"
+
+# Load environment variables
+if [ ! -f .env ]; then
+    log_error ".env file not found. Please run step-020-deploy.sh first." "$SCRIPT_NAME"
+    exit 1
+fi
+
+source .env
 
 # Validate required variables
 if [ -z "$APP_NAME" ] || [ -z "$STAGE" ] || [ -z "$S3_BUCKET_NAME" ]; then
-    echo "❌ Missing required variables in .env file. Please run step-20-deploy.sh first."
+    log_error "Missing required variables in .env file. Please run step-020-deploy.sh first." "$SCRIPT_NAME"
     exit 1
 fi
+log_success "Environment variables validated" "$SCRIPT_NAME"
 
 # Check for AWS CLI configuration
 if ! aws sts get-caller-identity &> /dev/null; then
@@ -113,20 +129,20 @@ else
     echo "⚠️ Warning: Could not determine CloudFront distribution ID"
 fi
 
+# Mark step as completed
+create_checkpoint "$SCRIPT_NAME" "completed" "$SCRIPT_NAME"
+
 echo
-echo "✅ Web files update completed successfully!"
+log_success "Web files deployment completed successfully!" "$SCRIPT_NAME"
 echo
-echo "🔗 Your applications:"
-echo "   📁 File Manager: $CLOUDFRONT_URL"
+echo -e "${BLUE}🔗 Your applications:${NC}"
+echo -e "${GREEN}   📁 File Manager: $CLOUDFRONT_URL${NC}"
 if [ -f web/audio.html ]; then
-    echo "   🎤 Audio Recorder: $CLOUDFRONT_URL/audio.html"
+    echo -e "${GREEN}   🎤 Audio Recorder: $CLOUDFRONT_URL/audio.html${NC}"
 fi
 echo
-echo "⚠️ Note: It may take a few minutes for the CloudFront invalidation to complete."
-echo "⚠️ Changes should be visible in 1-2 minutes."
+echo -e "${YELLOW}⚠️ Note: It may take a few minutes for the CloudFront invalidation to complete.${NC}"
+echo -e "${YELLOW}⚠️ Changes should be visible in 1-2 minutes.${NC}"
 
-# Update setup status
-update_setup_status
-
-# Print next steps using common function
-print_next_steps
+# Show next step
+show_next_step "step-025-update-web-files.sh" "$(dirname "$0")"
