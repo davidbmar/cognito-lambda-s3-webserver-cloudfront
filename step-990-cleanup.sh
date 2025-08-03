@@ -1,18 +1,37 @@
 #!/bin/bash
-# step-99-cleanup.sh - Complete cleanup with all safety features
+# step-990-cleanup.sh - Complete cleanup with comprehensive orphaned resource detection
+# Prerequisites: None (can be run anytime)
+# Outputs: Complete cleanup of all AWS resources associated with the application
 # Phase 1: Discovery and reporting what exists
-# Phase 2: Show deletion plan
+# Phase 2: Show deletion plan  
 # Phase 3: Execute cleanup with confirmations
 
-set -e # Exit on any error
+# Source framework libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-handling.sh" || { echo "Error handling library not found"; exit 1; }
+source "$SCRIPT_DIR/step-navigation.sh" || { echo "Navigation library not found"; exit 1; }
+
+SCRIPT_NAME="step-990-cleanup"
+setup_error_handling "$SCRIPT_NAME"
+create_checkpoint "$SCRIPT_NAME" "in_progress" "$SCRIPT_NAME"
 
 # Load environment variables
 if [ ! -f .env ]; then
-    echo "❌ .env file not found. Cannot determine resources to clean up."
+    log_error ".env file not found. Cannot determine resources to clean up." "$SCRIPT_NAME"
+    echo -e "${YELLOW}💡 If you need to clean up resources without .env, you'll need to specify them manually${NC}"
     exit 1
 fi
 
 source .env
+
+# Validate required variables from .env
+if [ -z "$APP_NAME" ] || [ -z "$STAGE" ]; then
+    log_error "APP_NAME or STAGE not set in .env file" "$SCRIPT_NAME" 
+    echo -e "${YELLOW}💡 Run step-010-setup.sh to create proper .env configuration${NC}"
+    exit 1
+fi
+
+log_info "Starting comprehensive cleanup for $APP_NAME-$STAGE" "$SCRIPT_NAME"
 
 # Welcome banner
 echo "=================================================="
@@ -296,9 +315,69 @@ echo
 
 # Delete Lambda log groups
 if [ $LOG_GROUP_COUNT -gt 0 ]; then
-    echo "🗑️ Deleting Lambda log groups..."
-    aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/${APP_NAME}-${STAGE}" --query "logGroups[*].logGroupName" --output text | xargs -I {} aws logs delete-log-group --log-group-name {} 2>/dev/null || echo "⚠️ Failed to delete some log groups, continuing anyway."
+    log_info "Deleting Lambda log groups" "$SCRIPT_NAME"
+    aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/${APP_NAME}-${STAGE}" --query "logGroups[*].logGroupName" --output text | xargs -I {} aws logs delete-log-group --log-group-name {} 2>/dev/null || log_warning "Failed to delete some log groups, continuing anyway" "$SCRIPT_NAME"
 fi
+
+# Clean up any orphaned resources that could cause future deployment conflicts
+log_info "Scanning for orphaned resources that could cause deployment conflicts" "$SCRIPT_NAME"
+
+# 1. Orphaned Log Groups (can cause CREATE_FAILED errors)
+ORPHANED_LOGS=$(aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/${APP_NAME}-${STAGE}" --query "logGroups[*].logGroupName" --output text 2>/dev/null || echo "")
+ORPHANED_COUNT=0
+if [ -n "$ORPHANED_LOGS" ] && [ "$ORPHANED_LOGS" != "None" ]; then
+    log_warning "Found orphaned log groups that could cause deployment conflicts" "$SCRIPT_NAME"
+    for log_group in $ORPHANED_LOGS; do
+        if [ -n "$log_group" ]; then
+            log_info "Deleting orphaned log group: $log_group" "$SCRIPT_NAME"
+            if aws logs delete-log-group --log-group-name "$log_group" 2>/dev/null; then
+                ORPHANED_COUNT=$((ORPHANED_COUNT + 1))
+            else
+                log_warning "Failed to delete orphaned log group: $log_group" "$SCRIPT_NAME"
+            fi
+        fi
+    done
+    if [ $ORPHANED_COUNT -gt 0 ]; then
+        log_success "Cleaned up $ORPHANED_COUNT orphaned log groups" "$SCRIPT_NAME"
+    fi
+else
+    log_info "No orphaned log groups found" "$SCRIPT_NAME"
+fi
+
+# 2. Orphaned Lambda Functions (in case stack deletion failed)
+ORPHANED_FUNCTIONS=$(aws lambda list-functions --query "Functions[?starts_with(FunctionName, '${APP_NAME}-${STAGE}-')].FunctionName" --output text 2>/dev/null || echo "")
+if [ -n "$ORPHANED_FUNCTIONS" ] && [ "$ORPHANED_FUNCTIONS" != "None" ]; then
+    log_warning "Found orphaned Lambda functions" "$SCRIPT_NAME"
+    for function_name in $ORPHANED_FUNCTIONS; do
+        if [ -n "$function_name" ]; then
+            log_info "Deleting orphaned Lambda function: $function_name" "$SCRIPT_NAME"
+            aws lambda delete-function --function-name "$function_name" 2>/dev/null || log_warning "Failed to delete function: $function_name" "$SCRIPT_NAME"
+        fi
+    done
+else
+    log_info "No orphaned Lambda functions found" "$SCRIPT_NAME"
+fi
+
+# 3. Orphaned IAM Roles (from failed deployments)
+ORPHANED_ROLES=$(aws iam list-roles --query "Roles[?starts_with(RoleName, '${APP_NAME}-${STAGE}-')].RoleName" --output text 2>/dev/null || echo "")
+if [ -n "$ORPHANED_ROLES" ] && [ "$ORPHANED_ROLES" != "None" ]; then
+    log_warning "Found orphaned IAM roles" "$SCRIPT_NAME"
+    for role_name in $ORPHANED_ROLES; do
+        if [ -n "$role_name" ]; then
+            log_info "Deleting orphaned IAM role: $role_name" "$SCRIPT_NAME"
+            # Detach policies first
+            aws iam list-attached-role-policies --role-name "$role_name" --query "AttachedPolicies[*].PolicyArn" --output text 2>/dev/null | xargs -I {} aws iam detach-role-policy --role-name "$role_name" --policy-arn {} 2>/dev/null || true
+            # Delete inline policies
+            aws iam list-role-policies --role-name "$role_name" --query "PolicyNames" --output text 2>/dev/null | xargs -I {} aws iam delete-role-policy --role-name "$role_name" --policy-name {} 2>/dev/null || true
+            # Delete role
+            aws iam delete-role --role-name "$role_name" 2>/dev/null || log_warning "Failed to delete role: $role_name" "$SCRIPT_NAME"
+        fi
+    done
+else
+    log_info "No orphaned IAM roles found" "$SCRIPT_NAME"
+fi
+
+log_success "Orphaned resource cleanup completed" "$SCRIPT_NAME"
 
 # Delete deployment buckets found during discovery
 if [ $DEPLOYMENT_BUCKET_COUNT -gt 0 ]; then
@@ -497,3 +576,37 @@ if [ "$BUCKET_EXISTS" = true ]; then
 fi
 
 echo "=================================================="
+
+# Mark cleanup as completed
+create_checkpoint "$SCRIPT_NAME" "completed" "$SCRIPT_NAME"
+log_success "Comprehensive cleanup completed for $APP_NAME-$STAGE" "$SCRIPT_NAME"
+
+echo
+echo -e "${GREEN}🎉 Cleanup Summary:${NC}"
+echo -e "${BLUE}  • CloudFormation stack: ${STACK_EXISTS:+Deleted}${STACK_EXISTS:-N/A}${NC}"
+echo -e "${BLUE}  • Lambda functions: Cleaned up${NC}"
+echo -e "${BLUE}  • Log groups: Cleaned up${NC}" 
+echo -e "${BLUE}  • Orphaned resources: Scanned and cleaned${NC}"
+echo -e "${BLUE}  • IAM roles: Cleaned up${NC}"
+if [ "$DELETE_BUCKET" = true ]; then
+    echo -e "${BLUE}  • S3 data bucket: Deleted${NC}"
+elif [ "$BUCKET_CREATED_BY_STACK" = false ]; then
+    echo -e "${GREEN}  • S3 data bucket: PRESERVED (pre-existing)${NC}"
+else
+    echo -e "${YELLOW}  • S3 data bucket: Preserved by user choice${NC}"
+fi
+
+echo
+echo -e "${BLUE}💡 Next Steps:${NC}"
+echo -e "${BLUE}  • Your AWS account is now clean${NC}"
+echo -e "${BLUE}  • You can safely redeploy using: ./step-010-setup.sh${NC}"
+echo -e "${BLUE}  • Or use ./deploy-all.sh for fully automated deployment${NC}"
+
+# Clean deployment state for fresh start
+if [ -d ".deployment-state" ]; then
+    log_info "Cleaning deployment state for fresh start" "$SCRIPT_NAME"
+    rm -rf .deployment-state
+fi
+
+echo
+log_info "Cleanup script completed - ready for fresh deployment" "$SCRIPT_NAME"
