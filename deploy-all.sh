@@ -303,8 +303,8 @@ else
 fi
 
 # Step 2: Initial Setup
-if prompt_continue "step-10-setup.sh" "Configure AWS resources and generate environment settings"; then
-    if ! run_step "step-10-setup.sh" "Initial Setup"; then
+if prompt_continue "step-010-setup.sh" "Configure AWS resources and generate environment settings"; then
+    if ! run_step "step-010-setup.sh" "Initial Setup"; then
         log_error "Initial setup failed - deployment cannot continue" "$SCRIPT_NAME"
         exit 1
     fi
@@ -314,13 +314,13 @@ else
 fi
 
 # Step 3: Validation
-if prompt_continue "step-15-validate.sh" "Validate configuration and AWS connectivity"; then
-    run_step "step-15-validate.sh" "Configuration Validation" true
+if prompt_continue "step-015-validate.sh" "Validate configuration and AWS connectivity"; then
+    run_step "step-015-validate.sh" "Configuration Validation" true
 fi
 
 # Step 4: Infrastructure Deployment (Critical)
-if prompt_continue "step-20-deploy.sh" "Deploy Lambda functions and AWS infrastructure"; then
-    if ! run_step "step-20-deploy.sh" "Infrastructure Deployment"; then
+if prompt_continue "step-020-deploy.sh" "Deploy Lambda functions and AWS infrastructure"; then
+    if ! run_step "step-020-deploy.sh" "Infrastructure Deployment"; then
         log_error "Infrastructure deployment failed - deployment cannot continue" "$SCRIPT_NAME"
         exit 1
     fi
@@ -330,13 +330,13 @@ else
 fi
 
 # Step 5: Cognito Configuration
-if prompt_continue "step-22-update-cognito-client.sh" "Configure Cognito authentication settings"; then
-    run_step "step-22-update-cognito-client.sh" "Cognito Configuration" true
+if prompt_continue "step-022-update-cognito-client.sh" "Configure Cognito authentication settings"; then
+    run_step "step-022-update-cognito-client.sh" "Cognito Configuration" true
 fi
 
 # Step 6: Web Files Deployment (Critical)
-if prompt_continue "step-25-update-web-files.sh" "Deploy web interface with configured endpoints"; then
-    if ! run_step "step-25-update-web-files.sh" "Web Files Deployment"; then
+if prompt_continue "step-025-update-web-files.sh" "Deploy web interface with configured endpoints"; then
+    if ! run_step "step-025-update-web-files.sh" "Web Files Deployment"; then
         log_error "Web files deployment failed - application may not work correctly" "$SCRIPT_NAME"
         if [ "$AUTO_APPROVE" = true ]; then
             log_error "Auto-approve mode: stopping due to critical failure" "$SCRIPT_NAME"
@@ -350,8 +350,8 @@ fi
 
 # Step 7: Test User Creation (Optional)
 if [ "$SKIP_USER_CREATION" = false ]; then
-    if prompt_continue "step-30-create-user.sh" "Create a test user for application testing"; then
-        run_step "step-30-create-user.sh" "Test User Creation" true
+    if prompt_continue "step-030-create-user.sh" "Create a test user for application testing"; then
+        run_step "step-030-create-user.sh" "Test User Creation" true
     fi
 else
     log_info "Test user creation skipped by user request" "$SCRIPT_NAME"
@@ -359,16 +359,16 @@ fi
 
 # Step 8: Application Testing (Optional)
 if [ "$SKIP_TESTS" = false ]; then
-    if prompt_continue "step-40-test.sh" "Test deployed application functionality"; then
-        run_step "step-40-test.sh" "Application Testing" true
+    if prompt_continue "step-040-test.sh" "Test deployed application functionality"; then
+        run_step "step-040-test.sh" "Application Testing" true
     fi
 else
     log_info "Application testing skipped by user request" "$SCRIPT_NAME"
 fi
 
 # Step 9: EventBridge Configuration (Optional)
-if prompt_continue "step-50-configure-eventbridge.sh" "Configure EventBridge for event publishing"; then
-    run_step "step-50-configure-eventbridge.sh" "EventBridge Configuration" true
+if prompt_continue "step-050-configure-eventbridge.sh" "Configure EventBridge for event publishing"; then
+    run_step "step-050-configure-eventbridge.sh" "EventBridge Configuration" true
 fi
 
 # Clean up temporary files

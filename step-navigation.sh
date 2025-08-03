@@ -104,12 +104,12 @@ show_next_step() {
         
         echo
         echo -e "${BLUE}Optional next steps:${NC}"
-        if [ ! -f "${script_dir}/step-30-create-user.sh" ] || ! is_step_completed "step-30-create-user"; then
-            echo -e "${BLUE}  👤 Create test user: ./step-30-create-user.sh${NC}"
+        if [ ! -f "${script_dir}/step-030-create-user.sh" ] || ! is_step_completed "step-030-create-user"; then
+            echo -e "${BLUE}  👤 Create test user: ./step-030-create-user.sh${NC}"
         fi
-        echo -e "${BLUE}  🧪 Run comprehensive tests: ./step-40-test.sh${NC}"
-        echo -e "${BLUE}  🔗 Configure EventBridge: ./step-50-configure-eventbridge.sh${NC}"
-        echo -e "${BLUE}  🧹 Clean up resources: ./step-99-cleanup.sh${NC}"
+        echo -e "${BLUE}  🧪 Run comprehensive tests: ./step-040-test.sh${NC}"
+        echo -e "${BLUE}  🔗 Configure EventBridge: ./step-050-configure-eventbridge.sh${NC}"
+        echo -e "${BLUE}  🧹 Clean up resources: ./step-990-cleanup.sh${NC}"
         
         # Show deployment summary
         show_deployment_summary "$script_name"
@@ -299,14 +299,14 @@ estimate_remaining_time() {
     # Simple time estimates in minutes for each step
     declare -A STEP_TIME_ESTIMATES=(
         ["step-001-preflight-check.sh"]=1
-        ["step-10-setup.sh"]=2
-        ["step-15-validate.sh"]=1
-        ["step-20-deploy.sh"]=8
-        ["step-22-update-cognito-client.sh"]=2
-        ["step-25-update-web-files.sh"]=3
-        ["step-30-create-user.sh"]=1
-        ["step-40-test.sh"]=2
-        ["step-50-configure-eventbridge.sh"]=3
+        ["step-010-setup.sh"]=2
+        ["step-015-validate.sh"]=1
+        ["step-020-deploy.sh"]=8
+        ["step-022-update-cognito-client.sh"]=2
+        ["step-025-update-web-files.sh"]=3
+        ["step-030-create-user.sh"]=1
+        ["step-040-test.sh"]=2
+        ["step-050-configure-eventbridge.sh"]=3
     )
     
     local remaining_time=0
