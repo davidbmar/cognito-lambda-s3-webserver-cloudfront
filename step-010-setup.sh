@@ -1,39 +1,61 @@
 #!/bin/bash
-# step1-setup.sh - Initial setup script for the CloudFront Cognito Serverless Application
-# This script should be run first after cloning the repository
+# step-10-setup.sh - Initial setup script for the CloudDrive Serverless Application
+# This script configures AWS resources and generates environment settings
+# Prerequisites: step-001-preflight-check.sh (recommended)
+# Outputs: .env file with all deployment configuration
 
-set -e # Exit on any error
+# Source framework libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/error-handling.sh" || { echo "Error handling library not found"; exit 1; }
+source "$SCRIPT_DIR/step-navigation.sh" || { echo "Navigation library not found"; exit 1; }
+
+SCRIPT_NAME="step-10-setup"
+setup_error_handling "$SCRIPT_NAME"
+create_checkpoint "$SCRIPT_NAME" "in_progress" "$SCRIPT_NAME"
+
+# Validate prerequisites
+if ! validate_prerequisites "step-10-setup.sh"; then
+    log_error "Prerequisites not met - run preflight check first" "$SCRIPT_NAME"
+    echo -e "${YELLOW}💡 Run: ./step-001-preflight-check.sh${NC}"
+    exit 1
+fi
+
+# Show step purpose
+show_step_purpose "step-10-setup.sh"
 
 # Welcome banner
-echo "=================================================="
-echo "     CloudFront Cognito Serverless Application    "
-echo "                 Setup Script                     "
-echo "=================================================="
+echo -e "${CYAN}=================================================="
+echo -e "       CloudDrive Serverless Application"
+echo -e "              INITIAL SETUP"
+echo -e "==================================================${NC}"
 echo
+log_info "Starting initial setup and configuration" "$SCRIPT_NAME"
 
-# Check for AWS CLI installation
-if ! command -v aws &> /dev/null; then
-    echo "❌ AWS CLI is not installed. Please install it first:"
-    echo "   https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+# Check AWS CLI and credentials using framework functions
+if ! check_command_exists "aws" "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html" "$SCRIPT_NAME"; then
     exit 1
 fi
 
-# Check for AWS CLI configuration
-if ! aws sts get-caller-identity &> /dev/null; then
-    echo "❌ AWS CLI is not configured properly. Please run 'aws configure' first."
+if ! check_aws_credentials "$SCRIPT_NAME"; then
     exit 1
 fi
 
-# Get AWS account ID for bucket naming
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-AWS_REGION=$(aws configure get region)
+# Get AWS account information with error handling
+log_info "Retrieving AWS account information" "$SCRIPT_NAME"
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null) || {
+    log_error "Failed to get AWS account ID" "$SCRIPT_NAME"
+    exit 1
+}
+
+AWS_REGION=$(aws configure get region 2>/dev/null)
 if [ -z "$AWS_REGION" ]; then
     AWS_REGION="us-east-2"  # Default region
-    echo "⚠️ AWS region not found in configuration, using default: $AWS_REGION"
+    log_warning "AWS region not found in configuration, using default: $AWS_REGION" "$SCRIPT_NAME"
+else
+    log_success "Using configured AWS region: $AWS_REGION" "$SCRIPT_NAME"
 fi
 
-echo "🔍 Found AWS Account ID: $AWS_ACCOUNT_ID"
-echo "🔍 Using AWS Region: $AWS_REGION"
+log_success "AWS Account ID: $AWS_ACCOUNT_ID" "$SCRIPT_NAME"
 
 # Generate unique app name with username prefix
 DEFAULT_USERNAME=$(whoami | tr -cd '[:alnum:]-' | tr '[:upper:]' '[:lower:]')
@@ -719,15 +741,18 @@ for script in step2-deploy.sh step3-create-user.sh test.sh cleanup.sh; do
     fi
 done
 
+# Mark this step as completed
+create_checkpoint "$SCRIPT_NAME" "completed" "$SCRIPT_NAME"
+
 echo
-echo "✅ Setup completed successfully!"
+log_success "Initial setup completed successfully!" "$SCRIPT_NAME"
 echo
-echo "Your configuration has been saved to .env and updated in the project files."
+log_info "Configuration saved to .env file" "$SCRIPT_NAME"
+log_info "Project files updated with settings" "$SCRIPT_NAME"
+
 echo
-echo "Next steps:"
-echo "1. Review the settings in .env if needed"
-echo "2. Run './step2-deploy.sh' to deploy your application"
-echo "3. After deployment, use './step3-create-user.sh' to create a test user"
-echo
-echo "⚠️ Important: .env contains sensitive information and should not be committed to version control"
-echo "=================================================="
+echo -e "${YELLOW}⚠️ Important Security Note:${NC}"
+echo -e "${YELLOW}.env contains sensitive information and should not be committed to version control${NC}"
+
+# Show next step using navigation system
+show_next_step "step-10-setup.sh" "$(dirname "$0")"
