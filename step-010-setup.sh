@@ -9,19 +9,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/error-handling.sh" || { echo "Error handling library not found"; exit 1; }
 source "$SCRIPT_DIR/step-navigation.sh" || { echo "Navigation library not found"; exit 1; }
 
-SCRIPT_NAME="step-10-setup"
+SCRIPT_NAME="step-010-setup"
 setup_error_handling "$SCRIPT_NAME"
 create_checkpoint "$SCRIPT_NAME" "in_progress" "$SCRIPT_NAME"
 
 # Validate prerequisites
-if ! validate_prerequisites "step-10-setup.sh"; then
+if ! validate_prerequisites "step-010-setup.sh"; then
     log_error "Prerequisites not met - run preflight check first" "$SCRIPT_NAME"
     echo -e "${YELLOW}💡 Run: ./step-001-preflight-check.sh${NC}"
     exit 1
 fi
 
 # Show step purpose
-show_step_purpose "step-10-setup.sh"
+show_step_purpose "step-010-setup.sh"
 
 # Welcome banner
 echo -e "${CYAN}=================================================="
@@ -755,4 +755,4 @@ echo -e "${YELLOW}⚠️ Important Security Note:${NC}"
 echo -e "${YELLOW}.env contains sensitive information and should not be committed to version control${NC}"
 
 # Show next step using navigation system
-show_next_step "step-10-setup.sh" "$(dirname "$0")"
+show_next_step "step-010-setup.sh" "$(dirname "$0")"

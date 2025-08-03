@@ -96,7 +96,7 @@ check_env_vars() {
         echo "❌ Error: Missing required environment variables:"
         printf '%s\n' "${missing_vars[@]}"
         echo ""
-        echo "Please run './step-10-setup.sh' first"
+        echo "Please run './step-010-setup.sh' first"
         return 1
     fi
     
@@ -116,7 +116,7 @@ load_config() {
         source "$CONFIG_FILE"
     else
         echo "❌ Error: Configuration file not found."
-        echo "Please run './step-10-setup.sh' first"
+        echo "Please run './step-010-setup.sh' first"
         return 1
     fi
 }

@@ -1,4 +1,4 @@
-service: dbm-july-26-cf-app
+service: dbm-cf-app
 
 provider:
   name: aws
