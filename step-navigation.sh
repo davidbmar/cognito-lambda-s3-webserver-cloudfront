@@ -25,7 +25,8 @@ declare -A STEP_SEQUENCE=(
     ["step-025-update-web-files.sh"]="step-030-create-user.sh"
     ["step-030-create-user.sh"]="step-040-test.sh"
     ["step-040-test.sh"]="step-050-configure-eventbridge.sh"
-    ["step-050-configure-eventbridge.sh"]="complete"
+    ["step-050-configure-eventbridge.sh"]="step-055-test-eventbridge.sh"
+    ["step-055-test-eventbridge.sh"]="complete"
 )
 
 declare -A STEP_DESCRIPTIONS=(
@@ -38,6 +39,7 @@ declare -A STEP_DESCRIPTIONS=(
     ["step-030-create-user.sh"]="Create test Cognito user (optional)"
     ["step-040-test.sh"]="Test application functionality and API endpoints"
     ["step-050-configure-eventbridge.sh"]="Configure EventBridge integration for event publishing"
+    ["step-055-test-eventbridge.sh"]="Test EventBridge integration with monitoring guidance"
     ["step-990-cleanup.sh"]="Clean up AWS resources (intelligent bucket preservation)"
 )
 
@@ -51,6 +53,7 @@ declare -A STEP_PREREQUISITES=(
     ["step-030-create-user.sh"]="step-025-update-web-files.sh"
     ["step-040-test.sh"]="step-025-update-web-files.sh"  # Can test without user creation
     ["step-050-configure-eventbridge.sh"]="step-025-update-web-files.sh"
+    ["step-055-test-eventbridge.sh"]="step-050-configure-eventbridge.sh"
     ["step-990-cleanup.sh"]=""  # Can run anytime
 )
 
