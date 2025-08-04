@@ -174,8 +174,8 @@ echo "🚀 Deploying Lambda functions with EventBridge configuration..."
 # Export EVENT_BUS_NAME for serverless deployment
 export EVENT_BUS_NAME="$EVENT_BUS_NAME"
 
-# Deploy
-npx serverless deploy --stage "$STAGE"
+# Deploy with force to ensure environment variables are updated
+npx serverless deploy --stage "$STAGE" --force
 
 # Mark step as completed
 create_checkpoint "$SCRIPT_NAME" "completed" "$SCRIPT_NAME"
