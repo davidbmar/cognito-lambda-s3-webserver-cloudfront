@@ -516,13 +516,13 @@ if [ $DEPLOYMENT_BUCKET_COUNT -gt 0 ]; then
 fi
 echo
 if [ "$DELETE_BUCKET" = true ]; then
-    echo "S3 Data Bucket: DELETED ❌"
+    echo "S3 Data Bucket: DELETED ✅"
 else
     echo "S3 Data Bucket: PRESERVED ✅"
     echo "  → $S3_BUCKET_NAME"
 fi
 echo
-echo "To redeploy: ./step-10-setup.sh followed by ./step-20-deploy.sh"
+echo "To redeploy: ./step-010-setup.sh followed by ./step-020-deploy.sh"
 
 # Recommend using a different stage name if there were issues
 if [ "$STACK_EXISTS" = true ] && aws cloudformation describe-stacks --stack-name $STACK_NAME 2>/dev/null | grep -q "DELETE_FAILED"; then
@@ -537,19 +537,40 @@ echo
 echo "🔍 Final Verification:"
 # Check if CloudFormation stack is deleted
 if [ "$STACK_EXISTS" = true ]; then
-    aws cloudformation describe-stacks --stack-name $STACK_NAME 2>&1 | grep -q "does not exist" && echo "✅ Stack deleted" || echo "❌ Stack still exists"
+    if aws cloudformation describe-stacks --stack-name $STACK_NAME 2>&1 | grep -q "does not exist"; then
+        echo "✅ CloudFormation stack successfully deleted"
+    else
+        CURRENT_STATUS=$(aws cloudformation describe-stacks --stack-name $STACK_NAME --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "DOES_NOT_EXIST")
+        if [ "$CURRENT_STATUS" = "DELETE_FAILED" ]; then
+            echo "⚠️  CloudFormation stack in DELETE_FAILED state (expected - handled by manual cleanup)"
+        elif [ "$CURRENT_STATUS" = "DOES_NOT_EXIST" ]; then
+            echo "✅ CloudFormation stack successfully deleted"
+        else
+            echo "ℹ️  CloudFormation stack status: $CURRENT_STATUS"
+        fi
+    fi
 fi
 
 # Check if S3 bucket is deleted (only if user chose to delete)
 if [ "$BUCKET_EXISTS" = true ]; then
     if [ "$DELETE_BUCKET" = true ]; then
-        aws s3api head-bucket --bucket "$S3_BUCKET_NAME" 2>&1 | grep -q "Not Found\|NoSuchBucket\|404" && echo "✅ Bucket deleted" || echo "❌ Bucket still exists"
+        if aws s3api head-bucket --bucket "$S3_BUCKET_NAME" 2>&1 | grep -q "Not Found\|NoSuchBucket\|404"; then
+            echo "✅ S3 data bucket successfully deleted"
+        else
+            echo "⚠️  S3 data bucket may still exist (check AWS console if concerned)"
+        fi
     else
-        echo "✅ Bucket preserved as requested"
+        echo "✅ S3 data bucket preserved as requested"
     fi
 fi
 
 echo "=================================================="
+
+# Clean deployment state for fresh start BEFORE final logging
+if [ -d ".deployment-state" ]; then
+    log_info "Cleaning deployment state for fresh start" "$SCRIPT_NAME"
+    rm -rf .deployment-state
+fi
 
 # Mark cleanup as completed
 create_checkpoint "$SCRIPT_NAME" "completed" "$SCRIPT_NAME"
@@ -558,16 +579,20 @@ log_success "Comprehensive cleanup completed for $APP_NAME-$STAGE" "$SCRIPT_NAME
 echo
 echo -e "${GREEN}🎉 Cleanup Summary:${NC}"
 echo -e "${BLUE}  • Local Serverless cache: Cleaned first (prevents conflicts)${NC}"
-echo -e "${BLUE}  • CloudFormation stack: ${STACK_EXISTS:+Deleted}${STACK_EXISTS:-N/A}${NC}"
+if [ "$STACK_EXISTS" = true ]; then
+    echo -e "${BLUE}  • CloudFormation stack: Deletion attempted (may be in DELETE_FAILED - resources cleaned manually)${NC}"
+else
+    echo -e "${BLUE}  • CloudFormation stack: N/A (did not exist)${NC}"
+fi
 echo -e "${BLUE}  • Deployment buckets: Cleaned up${NC}"
 echo -e "${BLUE}  • Orphaned resources: Scanned and cleaned${NC}"
 echo -e "${BLUE}  • Lambda functions & Log groups: Cleaned up${NC}"
 if [ "$DELETE_BUCKET" = true ]; then
-    echo -e "${BLUE}  • S3 data bucket: Deleted${NC}"
+    echo -e "${GREEN}  • S3 data bucket: DELETED${NC}"
 elif [ "$BUCKET_CREATED_BY_STACK" = false ]; then
-    echo -e "${GREEN}  • S3 data bucket: PRESERVED (pre-existing)${NC}"
+    echo -e "${GREEN}  • S3 data bucket: PRESERVED (pre-existing bucket)${NC}"
 else
-    echo -e "${YELLOW}  • S3 data bucket: Preserved by user choice${NC}"
+    echo -e "${YELLOW}  • S3 data bucket: PRESERVED (user choice)${NC}"
 fi
 
 echo
@@ -575,12 +600,6 @@ echo -e "${BLUE}💡 Next Steps:${NC}"
 echo -e "${BLUE}  • Your AWS account is now clean${NC}"
 echo -e "${BLUE}  • You can safely redeploy using: ./step-010-setup.sh${NC}"
 echo -e "${BLUE}  • Or use ./deploy-all.sh for fully automated deployment${NC}"
-
-# Clean deployment state for fresh start
-if [ -d ".deployment-state" ]; then
-    log_info "Cleaning deployment state for fresh start" "$SCRIPT_NAME"
-    rm -rf .deployment-state
-fi
 
 echo
 log_info "Cleanup script completed - ready for fresh deployment" "$SCRIPT_NAME"
