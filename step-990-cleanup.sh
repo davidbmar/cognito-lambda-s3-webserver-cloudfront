@@ -313,14 +313,66 @@ echo "📋 PHASE 3: EXECUTING CLEANUP"
 echo "=================================================="
 echo
 
-# Delete Lambda log groups
-if [ $LOG_GROUP_COUNT -gt 0 ]; then
-    log_info "Deleting Lambda log groups" "$SCRIPT_NAME"
-    aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/${APP_NAME}-${STAGE}" --query "logGroups[*].logGroupName" --output text | xargs -I {} aws logs delete-log-group --log-group-name {} 2>/dev/null || log_warning "Failed to delete some log groups, continuing anyway" "$SCRIPT_NAME"
+# STEP 1: Clean up local files FIRST (prevents deployment bucket conflicts)
+log_info "Cleaning up local Serverless Framework files to prevent conflicts" "$SCRIPT_NAME"
+if [ -d ".serverless" ]; then
+    log_info "Removing .serverless directory" "$SCRIPT_NAME"
+    rm -rf .serverless
+    log_success "Serverless cache cleaned" "$SCRIPT_NAME"
+else
+    log_info "No .serverless directory found" "$SCRIPT_NAME"
 fi
 
-# Clean up any orphaned resources that could cause future deployment conflicts
-log_info "Scanning for orphaned resources that could cause deployment conflicts" "$SCRIPT_NAME"
+# Clean up other local files
+log_info "Cleaning up generated local files" "$SCRIPT_NAME"
+rm -f web/app.js web/app.js.bak web/audio.html web/audio.html.bak serverless.yml.bak serverless.yml.backup-*
+rm -f .env.bak
+log_success "Local files cleaned" "$SCRIPT_NAME"
+
+# STEP 2: Delete CloudFormation stack (this will delete most AWS resources)
+if [ "$STACK_EXISTS" = true ]; then
+    log_info "Deleting CloudFormation stack: $STACK_NAME" "$SCRIPT_NAME"
+    aws cloudformation delete-stack --stack-name $STACK_NAME
+    
+    log_info "Waiting for stack deletion (this may take several minutes)..." "$SCRIPT_NAME"
+    if aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME 2>/dev/null; then
+        log_success "CloudFormation stack deleted successfully" "$SCRIPT_NAME"
+    else
+        log_warning "Stack deletion wait timed out or failed, checking status..." "$SCRIPT_NAME"
+        
+        # Check if stack is in DELETE_FAILED state
+        if aws cloudformation describe-stacks --stack-name $STACK_NAME 2>/dev/null | grep -q "DELETE_FAILED"; then
+            log_error "Stack is in DELETE_FAILED state" "$SCRIPT_NAME"
+            
+            # Get failed resources
+            FAILED_RESOURCES=$(aws cloudformation describe-stack-resources --stack-name $STACK_NAME --query "StackResources[?ResourceStatus=='DELETE_FAILED'].{Type:ResourceType,Id:PhysicalResourceId}" --output json)
+            log_info "Resources that failed to delete: $FAILED_RESOURCES" "$SCRIPT_NAME"
+            
+            # We'll handle these in the orphaned resources section below
+        else
+            log_info "Stack may still be deleting or already deleted" "$SCRIPT_NAME"
+        fi
+    fi
+else
+    log_info "No CloudFormation stack found to delete" "$SCRIPT_NAME"
+fi
+
+# STEP 3: Clean up deployment buckets (Serverless Framework buckets)
+if [ $DEPLOYMENT_BUCKET_COUNT -gt 0 ]; then
+    log_info "Deleting Serverless deployment buckets" "$SCRIPT_NAME"
+    for bucket in $DEPLOYMENT_BUCKETS; do
+        if [ -n "$bucket" ]; then
+            log_info "Emptying and deleting deployment bucket: $bucket" "$SCRIPT_NAME"
+            aws s3 rm s3://$bucket --recursive 2>/dev/null || log_warning "Failed to empty bucket $bucket" "$SCRIPT_NAME"
+            aws s3 rb s3://$bucket --force 2>/dev/null || log_warning "Failed to delete bucket $bucket" "$SCRIPT_NAME"
+        fi
+    done
+else
+    log_info "No deployment buckets found" "$SCRIPT_NAME"
+fi
+
+# STEP 4: Clean up any orphaned resources that CloudFormation missed
+log_info "Scanning for orphaned resources that could cause future deployment conflicts" "$SCRIPT_NAME"
 
 # 1. Orphaned Log Groups (can cause CREATE_FAILED errors)
 ORPHANED_LOGS=$(aws logs describe-log-groups --log-group-name-prefix "/aws/lambda/${APP_NAME}-${STAGE}" --query "logGroups[*].logGroupName" --output text 2>/dev/null || echo "")
@@ -379,16 +431,7 @@ fi
 
 log_success "Orphaned resource cleanup completed" "$SCRIPT_NAME"
 
-# Delete deployment buckets found during discovery
-if [ $DEPLOYMENT_BUCKET_COUNT -gt 0 ]; then
-    for bucket in $DEPLOYMENT_BUCKETS; do
-        if [ -n "$bucket" ]; then
-            echo "🗑️ Deleting deployment bucket: $bucket"
-            aws s3 rm s3://$bucket --recursive || echo "⚠️ Failed to empty bucket $bucket, continuing anyway."
-            aws s3 rb s3://$bucket --force || echo "⚠️ Failed to delete bucket $bucket, continuing anyway."
-        fi
-    done
-fi
+# STEP 5: Handle user data bucket separately (with user confirmation)
 
 # Ask about S3 data bucket
 DELETE_BUCKET=false
@@ -431,60 +474,7 @@ if [ "$BUCKET_EXISTS" = true ]; then
     echo "=================================================="
 fi
 
-# Delete Cognito domain
-if [ "$USER_POOL_EXISTS" = true ] && [ -n "$COGNITO_DOMAIN" ]; then
-    echo "🗑️ Deleting Cognito User Pool domain"
-    aws cognito-idp delete-user-pool-domain \
-        --user-pool-id $USER_POOL_ID \
-        --domain $COGNITO_DOMAIN 2>/dev/null || echo "⚠️ Failed to delete Cognito domain, continuing anyway."
-fi
-
-# Wait for CloudFront invalidations
-if [ "$DISTRIBUTION_EXISTS" = true ]; then
-    INVALIDATIONS=$(aws cloudfront list-invalidations --distribution-id $DISTRIBUTION_ID --query "InvalidationList.Items[?Status=='InProgress'].Id" --output text 2>/dev/null)
-    if [ -n "$INVALIDATIONS" ]; then
-        echo "⏳ Waiting for CloudFront invalidations to complete..."
-        for invalidation_id in $INVALIDATIONS; do
-            aws cloudfront wait invalidation-completed --distribution-id $DISTRIBUTION_ID --id $invalidation_id || true
-        done
-    fi
-fi
-
-# Delete CloudFormation stack with DELETE_FAILED handling
-if [ "$STACK_EXISTS" = true ]; then
-    echo "🗑️ Deleting CloudFormation stack: $STACK_NAME"
-    aws cloudformation delete-stack --stack-name $STACK_NAME
-    echo "⏳ Waiting for stack deletion (this may take several minutes)..."
-    aws cloudformation wait stack-delete-complete --stack-name $STACK_NAME || echo "⚠️ Stack deletion wait failed, continuing anyway."
-    
-    # Check if stack is in DELETE_FAILED state
-    echo "🔍 Checking if stack is in DELETE_FAILED state..."
-    if aws cloudformation describe-stacks --stack-name $STACK_NAME 2>/dev/null | grep -q "DELETE_FAILED"; then
-        echo "⚠️ Stack is in DELETE_FAILED state. Finding resources that failed to delete..."
-        
-        FAILED_RESOURCES=$(aws cloudformation describe-stack-resources --stack-name $STACK_NAME --query "StackResources[?ResourceStatus=='DELETE_FAILED']" --output json)
-        
-        echo "Resources that failed to delete: $FAILED_RESOURCES"
-        
-        # Handle each type of resource specifically
-        echo "🗑️ Attempting to delete failed resources directly..."
-        
-        # Extract and handle S3 buckets from the failed resources
-        S3_BUCKETS=$(echo "$FAILED_RESOURCES" | grep -o '"PhysicalResourceId":[[:space:]]*"[^"]*"' | grep -i "bucket" | sed 's/"PhysicalResourceId":[[:space:]]*"\(.*\)"/\1/')
-        
-        for bucket in $S3_BUCKETS; do
-            echo "🗑️ Emptying and deleting S3 bucket: $bucket"
-            aws s3 rm s3://$bucket --recursive || echo "⚠️ Failed to empty bucket, continuing anyway."
-            aws s3 rb s3://$bucket --force || echo "⚠️ Failed to delete bucket, continuing anyway."
-        done
-        
-        # Try deleting the stack one more time
-        echo "🔄 Attempting to delete the stack again..."
-        aws cloudformation delete-stack --stack-name $STACK_NAME
-        
-        echo "⚠️ If the stack still fails to delete, use a different STAGE value for your next deployment."
-    fi
-fi
+# These resources were already handled in the proper sequence above
 
 # Handle S3 bucket based on decision
 if [ "$DELETE_BUCKET" = true ] && [ "$BUCKET_EXISTS" = true ]; then
@@ -498,23 +488,7 @@ elif [ "$DELETE_BUCKET" = false ] && [ "$BUCKET_EXISTS" = true ]; then
     fi
 fi
 
-# Clean up any remaining deployment buckets after stack deletion
-if [ -n "$(echo $DEPLOYMENT_BUCKETS | xargs)" ]; then
-    echo "🔍 Checking if deployment buckets still exist after stack deletion..."
-    for bucket in $DEPLOYMENT_BUCKETS; do
-        if [ -n "$bucket" ] && aws s3api head-bucket --bucket "$bucket" 2>/dev/null; then
-            echo "🗑️ Manually deleting deployment bucket: $bucket"
-            aws s3 rm s3://$bucket --recursive || echo "⚠️ Failed to empty bucket $bucket, continuing anyway."
-            aws s3 rb s3://$bucket --force || echo "⚠️ Failed to delete bucket $bucket, continuing anyway."
-        fi
-    done
-fi
-
-# Clean up local files
-echo "🧹 Cleaning up local files..."
-rm -f web/app.js web/app.js.bak web/audio.html web/audio.html.bak serverless.yml.bak serverless.yml.backup-*
-rm -f .env.bak
-rm -rf .serverless
+# All cleanup was handled in the proper sequence above
 
 echo
 echo "=================================================="
@@ -583,11 +557,11 @@ log_success "Comprehensive cleanup completed for $APP_NAME-$STAGE" "$SCRIPT_NAME
 
 echo
 echo -e "${GREEN}🎉 Cleanup Summary:${NC}"
+echo -e "${BLUE}  • Local Serverless cache: Cleaned first (prevents conflicts)${NC}"
 echo -e "${BLUE}  • CloudFormation stack: ${STACK_EXISTS:+Deleted}${STACK_EXISTS:-N/A}${NC}"
-echo -e "${BLUE}  • Lambda functions: Cleaned up${NC}"
-echo -e "${BLUE}  • Log groups: Cleaned up${NC}" 
+echo -e "${BLUE}  • Deployment buckets: Cleaned up${NC}"
 echo -e "${BLUE}  • Orphaned resources: Scanned and cleaned${NC}"
-echo -e "${BLUE}  • IAM roles: Cleaned up${NC}"
+echo -e "${BLUE}  • Lambda functions & Log groups: Cleaned up${NC}"
 if [ "$DELETE_BUCKET" = true ]; then
     echo -e "${BLUE}  • S3 data bucket: Deleted${NC}"
 elif [ "$BUCKET_CREATED_BY_STACK" = false ]; then
