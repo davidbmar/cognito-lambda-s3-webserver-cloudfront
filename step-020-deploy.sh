@@ -153,9 +153,41 @@ sed -i.bak "s/REGION_PLACEHOLDER/$REGION/g" serverless.yml
 sed -i.bak "s/S3_BUCKET_NAME_PLACEHOLDER/$S3_BUCKET_NAME/g" serverless.yml
 sed -i.bak "s/STAGE_PLACEHOLDER/$STAGE/g" serverless.yml
 
-# Deploy the serverless application
+# Deploy the serverless application with error handling
 echo "🚀 Deploying serverless application..."
-npx serverless deploy --stage $STAGE
+if ! npx serverless deploy --stage $STAGE 2>&1 | tee /tmp/deploy-output.log; then
+    log_error "Deployment failed" "$SCRIPT_NAME"
+    
+    # Check for specific deployment bucket error
+    if grep -q "Deployment bucket has been removed manually" /tmp/deploy-output.log; then
+        log_warning "Detected deployment bucket conflict - attempting automatic recovery" "$SCRIPT_NAME"
+        
+        # Try to remove the service first
+        log_info "Running serverless remove to clean up state" "$SCRIPT_NAME"
+        npx serverless remove --stage $STAGE 2>/dev/null || true
+        
+        # Clean up .serverless directory
+        log_info "Cleaning .serverless directory" "$SCRIPT_NAME"
+        rm -rf .serverless
+        
+        # Retry deployment
+        log_info "Retrying deployment with clean state" "$SCRIPT_NAME"
+        if ! npx serverless deploy --stage $STAGE; then
+            log_error "Deployment failed after automatic recovery attempt" "$SCRIPT_NAME"
+            echo -e "${YELLOW}💡 Try running: ./step-990-cleanup.sh for complete cleanup${NC}"
+            exit 1
+        fi
+        log_success "Deployment succeeded after automatic recovery" "$SCRIPT_NAME"
+    else
+        # Show last few lines of error for other failures
+        echo -e "${RED}Deployment failed with error:${NC}"
+        tail -20 /tmp/deploy-output.log
+        exit 1
+    fi
+fi
+
+# Clean up temp file
+rm -f /tmp/deploy-output.log
 
 # If bucket already existed, we need to manually add the bucket policy for CloudFront
 if [ "$BUCKET_EXISTS" = true ]; then
