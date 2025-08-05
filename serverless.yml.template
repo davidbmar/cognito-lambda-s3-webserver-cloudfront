@@ -232,6 +232,7 @@ functions:
     handler: api/audio.uploadChunk
     environment:
       S3_BUCKET_NAME: ${self:custom.s3Bucket}
+      EVENT_BUS_NAME: ${env:EVENT_BUS_NAME, 'default'}
     events:
       - http:
           path: api/audio/upload-chunk
@@ -247,6 +248,7 @@ functions:
     handler: api/audio.updateSessionMetadata
     environment:
       S3_BUCKET_NAME: ${self:custom.s3Bucket}
+      EVENT_BUS_NAME: ${env:EVENT_BUS_NAME, 'default'}
     events:
       - http:
           path: api/audio/session-metadata
@@ -262,6 +264,7 @@ functions:
     handler: api/audio.listSessions
     environment:
       S3_BUCKET_NAME: ${self:custom.s3Bucket}
+      EVENT_BUS_NAME: ${env:EVENT_BUS_NAME, 'default'}
     events:
       - http:
           path: api/audio/sessions
@@ -277,6 +280,7 @@ functions:
     handler: api/audio.getFailedChunks
     environment:
       S3_BUCKET_NAME: ${self:custom.s3Bucket}
+      EVENT_BUS_NAME: ${env:EVENT_BUS_NAME, 'default'}
     events:
       - http:
           path: api/audio/failed-chunks
