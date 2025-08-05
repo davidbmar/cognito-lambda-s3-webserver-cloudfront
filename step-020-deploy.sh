@@ -422,7 +422,15 @@ if [ -f web/app.js ]; then
         exit 1
     fi
     if ! sed -i.bak "s|YOUR_COGNITO_DOMAIN_PREFIX|$COGNITO_DOMAIN|g" web/app.js; then
+        log_error "Failed to update COGNITO_DOMAIN_PREFIX in app.js" "$SCRIPT_NAME"
+        exit 1
+    fi
+    if ! sed -i.bak "s|YOUR_COGNITO_DOMAIN|$COGNITO_DOMAIN|g" web/app.js; then
         log_error "Failed to update COGNITO_DOMAIN in app.js" "$SCRIPT_NAME"
+        exit 1
+    fi
+    if ! sed -i.bak "s|YOUR_REGION|$REGION|g" web/app.js; then
+        log_error "Failed to update REGION in app.js" "$SCRIPT_NAME"
         exit 1
     fi
 
