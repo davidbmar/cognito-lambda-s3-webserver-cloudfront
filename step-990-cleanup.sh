@@ -343,13 +343,95 @@ if [ "$STACK_EXISTS" = true ]; then
         
         # Check if stack is in DELETE_FAILED state
         if aws cloudformation describe-stacks --stack-name $STACK_NAME 2>/dev/null | grep -q "DELETE_FAILED"; then
-            log_error "Stack is in DELETE_FAILED state" "$SCRIPT_NAME"
+            log_error "Stack is in DELETE_FAILED state - will force delete individual resources" "$SCRIPT_NAME"
             
-            # Get failed resources
-            FAILED_RESOURCES=$(aws cloudformation describe-stack-resources --stack-name $STACK_NAME --query "StackResources[?ResourceStatus=='DELETE_FAILED'].{Type:ResourceType,Id:PhysicalResourceId}" --output json)
-            log_info "Resources that failed to delete: $FAILED_RESOURCES" "$SCRIPT_NAME"
+            # Get all resources from the stack (not just failed ones)
+            ALL_RESOURCES=$(aws cloudformation describe-stack-resources --stack-name $STACK_NAME --query "StackResources[].{Type:ResourceType,Id:PhysicalResourceId,LogicalId:LogicalResourceId}" --output json 2>/dev/null || echo "[]")
+            log_info "Found $(echo "$ALL_RESOURCES" | jq length) resources in DELETE_FAILED stack" "$SCRIPT_NAME"
             
-            # We'll handle these in the orphaned resources section below
+            # Force delete each resource type we know how to handle
+            log_info "Force deleting stack resources individually..." "$SCRIPT_NAME"
+            
+            # Force delete Lambda functions
+            echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::Lambda::Function") | .Id' | while read -r function_name; do
+                if [ -n "$function_name" ] && [ "$function_name" != "null" ]; then
+                    log_info "Force deleting Lambda function: $function_name" "$SCRIPT_NAME"
+                    aws lambda delete-function --function-name "$function_name" 2>/dev/null || log_warning "Failed to force delete Lambda function: $function_name" "$SCRIPT_NAME"
+                fi
+            done
+            
+            # Force delete CloudFront distributions
+            echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::CloudFront::Distribution") | .Id' | while read -r distribution_id; do
+                if [ -n "$distribution_id" ] && [ "$distribution_id" != "null" ]; then
+                    log_info "Force deleting CloudFront distribution: $distribution_id" "$SCRIPT_NAME"
+                    # Disable distribution first
+                    DIST_CONFIG=$(aws cloudfront get-distribution-config --id "$distribution_id" 2>/dev/null)
+                    if [ $? -eq 0 ]; then
+                        ETAG=$(echo "$DIST_CONFIG" | jq -r '.ETag')
+                        echo "$DIST_CONFIG" | jq '.DistributionConfig.Enabled = false' > /tmp/dist-config.json
+                        aws cloudfront update-distribution --id "$distribution_id" --distribution-config "file:///tmp/dist-config.json" --if-match "$ETAG" 2>/dev/null || true
+                        log_info "CloudFront distribution $distribution_id disabled, deletion will complete automatically" "$SCRIPT_NAME"
+                        rm -f /tmp/dist-config.json
+                    fi
+                fi
+            done
+            
+            # Force delete API Gateway Rest APIs
+            echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::ApiGateway::RestApi") | .Id' | while read -r api_id; do
+                if [ -n "$api_id" ] && [ "$api_id" != "null" ]; then
+                    log_info "Force deleting API Gateway: $api_id" "$SCRIPT_NAME"
+                    aws apigateway delete-rest-api --rest-api-id "$api_id" 2>/dev/null || log_warning "Failed to force delete API Gateway: $api_id" "$SCRIPT_NAME"
+                fi
+            done
+            
+            # Force delete Cognito User Pools
+            echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::Cognito::UserPool") | .Id' | while read -r user_pool_id; do
+                if [ -n "$user_pool_id" ] && [ "$user_pool_id" != "null" ]; then
+                    log_info "Force deleting Cognito User Pool: $user_pool_id" "$SCRIPT_NAME"
+                    # Delete domain first if it exists
+                    DOMAIN=$(aws cognito-idp describe-user-pool --user-pool-id "$user_pool_id" --query 'UserPool.Domain' --output text 2>/dev/null || echo "")
+                    if [ -n "$DOMAIN" ] && [ "$DOMAIN" != "None" ] && [ "$DOMAIN" != "null" ]; then
+                        log_info "Deleting Cognito domain: $DOMAIN" "$SCRIPT_NAME"
+                        aws cognito-idp delete-user-pool-domain --domain "$DOMAIN" 2>/dev/null || true
+                    fi
+                    aws cognito-idp delete-user-pool --user-pool-id "$user_pool_id" 2>/dev/null || log_warning "Failed to force delete User Pool: $user_pool_id" "$SCRIPT_NAME"
+                fi
+            done
+            
+            # Force delete Cognito Identity Pools
+            echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::Cognito::IdentityPool") | .Id' | while read -r identity_pool_id; do
+                if [ -n "$identity_pool_id" ] && [ "$identity_pool_id" != "null" ]; then
+                    log_info "Force deleting Cognito Identity Pool: $identity_pool_id" "$SCRIPT_NAME"
+                    aws cognito-identity delete-identity-pool --identity-pool-id "$identity_pool_id" 2>/dev/null || log_warning "Failed to force delete Identity Pool: $identity_pool_id" "$SCRIPT_NAME"
+                fi
+            done
+            
+            # Force delete IAM roles (be careful - only ones created by our stack)
+            echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::IAM::Role") | .Id' | while read -r role_name; do
+                if [ -n "$role_name" ] && [ "$role_name" != "null" ]; then
+                    log_info "Force deleting IAM role: $role_name" "$SCRIPT_NAME"
+                    # Detach managed policies
+                    aws iam list-attached-role-policies --role-name "$role_name" --query "AttachedPolicies[*].PolicyArn" --output text 2>/dev/null | tr '\t' '\n' | while read -r policy_arn; do
+                        if [ -n "$policy_arn" ] && [ "$policy_arn" != "None" ]; then
+                            aws iam detach-role-policy --role-name "$role_name" --policy-arn "$policy_arn" 2>/dev/null || true
+                        fi
+                    done
+                    # Delete inline policies
+                    aws iam list-role-policies --role-name "$role_name" --query "PolicyNames" --output text 2>/dev/null | tr '\t' '\n' | while read -r policy_name; do
+                        if [ -n "$policy_name" ] && [ "$policy_name" != "None" ]; then
+                            aws iam delete-role-policy --role-name "$role_name" --policy-name "$policy_name" 2>/dev/null || true
+                        fi
+                    done
+                    aws iam delete-role --role-name "$role_name" 2>/dev/null || log_warning "Failed to force delete IAM role: $role_name" "$SCRIPT_NAME"
+                fi
+            done
+            
+            log_success "Force deletion of stack resources completed" "$SCRIPT_NAME"
+            
+            # Try to delete the stack again after cleaning up resources
+            log_info "Attempting final stack deletion after force cleanup..." "$SCRIPT_NAME"
+            aws cloudformation delete-stack --stack-name $STACK_NAME 2>/dev/null || true
+            
         else
             log_info "Stack may still be deleting or already deleted" "$SCRIPT_NAME"
         fi
@@ -363,9 +445,37 @@ if [ $DEPLOYMENT_BUCKET_COUNT -gt 0 ]; then
     log_info "Deleting Serverless deployment buckets" "$SCRIPT_NAME"
     for bucket in $DEPLOYMENT_BUCKETS; do
         if [ -n "$bucket" ]; then
-            log_info "Emptying and deleting deployment bucket: $bucket" "$SCRIPT_NAME"
-            aws s3 rm s3://$bucket --recursive 2>/dev/null || log_warning "Failed to empty bucket $bucket" "$SCRIPT_NAME"
-            aws s3 rb s3://$bucket --force 2>/dev/null || log_warning "Failed to delete bucket $bucket" "$SCRIPT_NAME"
+            log_info "Force cleaning deployment bucket: $bucket" "$SCRIPT_NAME"
+            
+            # First try normal deletion
+            if aws s3 rm s3://$bucket --recursive 2>/dev/null; then
+                log_info "Emptied bucket contents successfully" "$SCRIPT_NAME"
+            else
+                log_warning "Standard empty failed, trying aggressive cleanup" "$SCRIPT_NAME"
+                
+                # Try to remove bucket policy that might be blocking deletion
+                aws s3api delete-bucket-policy --bucket "$bucket" 2>/dev/null || true
+                
+                # Try to remove versioned objects
+                aws s3api list-object-versions --bucket "$bucket" --query 'Versions[].{Key:Key,VersionId:VersionId}' --output json 2>/dev/null | \
+                jq -r '.[] | "--key \(.Key) --version-id \(.VersionId)"' | \
+                xargs -I {} aws s3api delete-object --bucket "$bucket" {} 2>/dev/null || true
+                
+                # Try to remove delete markers
+                aws s3api list-object-versions --bucket "$bucket" --query 'DeleteMarkers[].{Key:Key,VersionId:VersionId}' --output json 2>/dev/null | \
+                jq -r '.[] | "--key \(.Key) --version-id \(.VersionId)"' | \
+                xargs -I {} aws s3api delete-object --bucket "$bucket" {} 2>/dev/null || true
+                
+                # Final recursive delete attempt
+                aws s3 rm s3://$bucket --recursive 2>/dev/null || true
+            fi
+            
+            # Delete the bucket
+            if aws s3 rb s3://$bucket --force 2>/dev/null; then
+                log_success "Deployment bucket deleted: $bucket" "$SCRIPT_NAME"
+            else
+                log_warning "Failed to delete deployment bucket: $bucket (may require manual cleanup)" "$SCRIPT_NAME"
+            fi
         fi
     done
 else
