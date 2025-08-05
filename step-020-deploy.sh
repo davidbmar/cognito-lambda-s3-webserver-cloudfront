@@ -263,23 +263,78 @@ aws cognito-idp update-user-pool-client \
   --allowed-o-auth-flows-user-pool-client
 
 # Check and configure Cognito domain
+log_info "Setting up Cognito domain" "$SCRIPT_NAME"
 echo "🔄 Setting up Cognito domain..."
-# Check if the domain already exists
-DOMAIN_CHECK=$(aws cognito-idp describe-user-pool --user-pool-id $USER_POOL_ID)
-EXISTING_DOMAIN=$(echo "$DOMAIN_CHECK" | grep -A 3 "Domain" | grep ":" | cut -d'"' -f4)
 
-if [ -z "$EXISTING_DOMAIN" ] || [ "$EXISTING_DOMAIN" == "null" ]; then
-    echo "🆕 Creating new Cognito domain: $COGNITO_DOMAIN"
-    aws cognito-idp create-user-pool-domain \
-      --domain $COGNITO_DOMAIN \
-      --user-pool-id $USER_POOL_ID
+# Check if required variables are set
+if [ -z "$USER_POOL_ID" ] || [ -z "$COGNITO_DOMAIN" ]; then
+    log_error "Missing required variables: USER_POOL_ID or COGNITO_DOMAIN" "$SCRIPT_NAME"
+    exit 1
+fi
+
+# Check if the domain already exists
+log_info "Checking existing Cognito domain for User Pool: $USER_POOL_ID" "$SCRIPT_NAME"
+echo "🔍 Checking if Cognito domain already exists for user pool..."
+
+DOMAIN_CHECK=$(aws cognito-idp describe-user-pool --user-pool-id $USER_POOL_ID 2>/dev/null)
+if [ $? -ne 0 ]; then
+    log_error "Failed to describe user pool $USER_POOL_ID" "$SCRIPT_NAME"
+    echo "💡 Check that the user pool exists and you have permissions"
+    exit 1
+fi
+log_success "Successfully retrieved user pool details" "$SCRIPT_NAME"
+
+# Use jq for more reliable JSON parsing instead of grep
+if command -v jq >/dev/null 2>&1; then
+    EXISTING_DOMAIN=$(echo "$DOMAIN_CHECK" | jq -r '.UserPool.Domain // empty' 2>/dev/null)
+    log_info "Using jq to parse domain: '$EXISTING_DOMAIN'" "$SCRIPT_NAME"
 else
+    # Fallback to grep method with timeout
+    log_info "jq not available, using grep fallback" "$SCRIPT_NAME"
+    EXISTING_DOMAIN=$(echo "$DOMAIN_CHECK" | timeout 10s grep -A 3 "Domain" | grep ":" | cut -d'"' -f4 2>/dev/null || echo "")
+fi
+
+log_info "Parsed existing domain result: '$EXISTING_DOMAIN'" "$SCRIPT_NAME"
+
+if [ -z "$EXISTING_DOMAIN" ] || [ "$EXISTING_DOMAIN" == "null" ] || [ "$EXISTING_DOMAIN" == "None" ]; then
+    log_info "No existing domain found, creating new Cognito domain: $COGNITO_DOMAIN" "$SCRIPT_NAME"
+    echo "🆕 Creating new Cognito domain: $COGNITO_DOMAIN"
+    
+    # Create domain with timeout and better error handling
+    DOMAIN_CREATE_OUTPUT=$(timeout 30s aws cognito-idp create-user-pool-domain \
+      --domain $COGNITO_DOMAIN \
+      --user-pool-id $USER_POOL_ID 2>&1)
+    
+    if [ $? -ne 0 ]; then
+        log_error "Failed to create Cognito domain '$COGNITO_DOMAIN'" "$SCRIPT_NAME"
+        echo "Error details: $DOMAIN_CREATE_OUTPUT"
+        if echo "$DOMAIN_CREATE_OUTPUT" | grep -q "InvalidParameterException"; then
+            echo "💡 Domain name '$COGNITO_DOMAIN' may be invalid or already taken globally"
+            echo "💡 Try using a different COGNITO_DOMAIN in your .env file"
+        elif echo "$DOMAIN_CREATE_OUTPUT" | grep -q "LimitExceededException"; then
+            echo "💡 Domain limit exceeded. Delete unused domains or use a different AWS account"
+        else
+            echo "💡 Check AWS permissions and domain name requirements"
+        fi
+        exit 1
+    fi
+    log_success "Successfully created Cognito domain: $COGNITO_DOMAIN" "$SCRIPT_NAME"
+    echo "✅ Cognito domain created successfully: $COGNITO_DOMAIN"
+else
+    log_info "Using existing Cognito domain: $EXISTING_DOMAIN" "$SCRIPT_NAME"
     echo "✅ Using existing Cognito domain: $EXISTING_DOMAIN"
     COGNITO_DOMAIN=$EXISTING_DOMAIN
 fi
 
+# Verify .env file exists before updating
+if [ ! -f .env ]; then
+    log_error ".env file not found. Cannot update deployment outputs." "$SCRIPT_NAME"
+    echo "💡 Run step-010-setup.sh to create the .env file"
+    exit 1
+fi
 
 # Update .env file with the deployment outputs (add CloudFront API endpoint)
+log_info "Updating .env file with deployment outputs" "$SCRIPT_NAME"
 echo "📝 Updating .env file with deployment outputs..."
 sed -i.bak "s|API_ENDPOINT=.*$|API_ENDPOINT=$API_ENDPOINT|g" .env
 sed -i.bak "s|USER_POOL_ID=.*$|USER_POOL_ID=$USER_POOL_ID|g" .env
@@ -305,51 +360,132 @@ else
 fi
 
 # Update the app.js replacement section to use CloudFront API:
+log_info "Creating app.js from template" "$SCRIPT_NAME"
 echo "📝 Creating app.js from template..."
-if [ -f web/app.js.template ]; then
-    cp web/app.js.template web/app.js
-    echo "✅ app.js created from template"
-else
+
+if [ ! -f web/app.js.template ]; then
+    log_error "web/app.js.template not found!" "$SCRIPT_NAME"
     echo "❌ ERROR: app.js.template not found!"
+    echo "💡 Make sure you're running this script from the project root directory"
     exit 1
 fi
 
+if ! cp web/app.js.template web/app.js; then
+    log_error "Failed to create app.js from template" "$SCRIPT_NAME"
+    exit 1
+fi
+log_success "app.js created from template" "$SCRIPT_NAME"
+echo "✅ app.js created from template"
+
+log_info "Updating app.js with deployment values" "$SCRIPT_NAME"
 echo "📝 Updating app.js with deployment values..."
+
+# Validate required variables before substitution
+if [ -z "$USER_POOL_ID" ] || [ -z "$USER_POOL_CLIENT_ID" ] || [ -z "$IDENTITY_POOL_ID" ] || [ -z "$CLOUDFRONT_URL" ] || [ -z "$COGNITO_DOMAIN" ]; then
+    log_error "Missing required variables for app.js template substitution" "$SCRIPT_NAME"
+    echo "USER_POOL_ID: $USER_POOL_ID"
+    echo "USER_POOL_CLIENT_ID: $USER_POOL_CLIENT_ID"
+    echo "IDENTITY_POOL_ID: $IDENTITY_POOL_ID"
+    echo "CLOUDFRONT_URL: $CLOUDFRONT_URL"
+    echo "COGNITO_DOMAIN: $COGNITO_DOMAIN"
+    exit 1
+fi
+
 if [ -f web/app.js ]; then
-    sed -i.bak "s|YOUR_USER_POOL_ID|$USER_POOL_ID|g" web/app.js
-    sed -i.bak "s|YOUR_USER_POOL_CLIENT_ID|$USER_POOL_CLIENT_ID|g" web/app.js
-    sed -i.bak "s|YOUR_IDENTITY_POOL_ID|$IDENTITY_POOL_ID|g" web/app.js
+    if ! sed -i.bak "s|YOUR_USER_POOL_ID|$USER_POOL_ID|g" web/app.js; then
+        log_error "Failed to update USER_POOL_ID in app.js" "$SCRIPT_NAME"
+        exit 1
+    fi
+    if ! sed -i.bak "s|YOUR_USER_POOL_CLIENT_ID|$USER_POOL_CLIENT_ID|g" web/app.js; then
+        log_error "Failed to update USER_POOL_CLIENT_ID in app.js" "$SCRIPT_NAME"
+        exit 1
+    fi
+    if ! sed -i.bak "s|YOUR_IDENTITY_POOL_ID|$IDENTITY_POOL_ID|g" web/app.js; then
+        log_error "Failed to update IDENTITY_POOL_ID in app.js" "$SCRIPT_NAME"
+        exit 1
+    fi
     # Use CloudFront API endpoint instead of direct API Gateway
-    sed -i.bak "s|YOUR_CLOUDFRONT_API_ENDPOINT|$CLOUDFRONT_API_ENDPOINT|g" web/app.js
-    sed -i.bak "s|YOUR_CLOUDFRONT_S3_API_ENDPOINT|${CLOUDFRONT_URL}/api/s3/list|g" web/app.js
-    sed -i.bak "s|YOUR_API_ENDPOINT|$CLOUDFRONT_API_ENDPOINT|g" web/app.js
-    sed -i.bak "s|YOUR_APP_URL|$CLOUDFRONT_URL|g" web/app.js
-    sed -i.bak "s|YOUR_COGNITO_DOMAIN_PREFIX|$COGNITO_DOMAIN|g" web/app.js
+    if ! sed -i.bak "s|YOUR_CLOUDFRONT_API_ENDPOINT|$CLOUDFRONT_API_ENDPOINT|g" web/app.js; then
+        log_error "Failed to update CLOUDFRONT_API_ENDPOINT in app.js" "$SCRIPT_NAME"
+        exit 1
+    fi
+    if ! sed -i.bak "s|YOUR_CLOUDFRONT_S3_API_ENDPOINT|${CLOUDFRONT_URL}/api/s3/list|g" web/app.js; then
+        log_error "Failed to update CLOUDFRONT_S3_API_ENDPOINT in app.js" "$SCRIPT_NAME"
+        exit 1
+    fi
+    if ! sed -i.bak "s|YOUR_API_ENDPOINT|$CLOUDFRONT_API_ENDPOINT|g" web/app.js; then
+        log_error "Failed to update API_ENDPOINT in app.js" "$SCRIPT_NAME"
+        exit 1
+    fi
+    if ! sed -i.bak "s|YOUR_APP_URL|$CLOUDFRONT_URL|g" web/app.js; then
+        log_error "Failed to update APP_URL in app.js" "$SCRIPT_NAME"
+        exit 1
+    fi
+    if ! sed -i.bak "s|YOUR_COGNITO_DOMAIN_PREFIX|$COGNITO_DOMAIN|g" web/app.js; then
+        log_error "Failed to update COGNITO_DOMAIN in app.js" "$SCRIPT_NAME"
+        exit 1
+    fi
 
     # Add large warning to the top of app.js
     WARNING="// WARNING: THIS FILE IS AUTO-GENERATED BY THE DEPLOYMENT SCRIPT.\n// DO NOT EDIT DIRECTLY AS YOUR CHANGES WILL BE OVERWRITTEN.\n// EDIT app.js.template INSTEAD.\n"
-    sed -i.bak "1s|^|$WARNING\n|" web/app.js
+    if ! sed -i.bak "1s|^|$WARNING\n|" web/app.js; then
+        log_error "Failed to add warning header to app.js" "$SCRIPT_NAME"
+        exit 1
+    fi
+    log_success "app.js updated with deployment values" "$SCRIPT_NAME"
 else
-    echo "❌ ERROR: app.js file could not be created or found!"
+    log_error "app.js file could not be created or found!" "$SCRIPT_NAME"
     exit 1
 fi
 
 # Invoke the setIdentityPoolRoles function to ensure roles are properly set
+log_info "Triggering setIdentityPoolRoles Lambda function" "$SCRIPT_NAME"
 echo "⚙️ Triggering the setIdentityPoolRoles Lambda function..."
 FUNCTION_NAME="${APP_NAME}-${STAGE}-setIdentityPoolRoles"
-aws lambda invoke --function-name $FUNCTION_NAME --invocation-type Event /dev/null || echo "Function invocation failed, but continuing deployment"
+
+if aws lambda invoke --function-name $FUNCTION_NAME --invocation-type Event /dev/null 2>/dev/null; then
+    log_success "setIdentityPoolRoles function invoked successfully" "$SCRIPT_NAME"
+else
+    log_warning "setIdentityPoolRoles function invocation failed, but continuing deployment" "$SCRIPT_NAME"
+    echo "Function invocation failed, but continuing deployment"
+fi
 
 # Upload the website files to S3
+log_info "Starting website files upload to S3" "$SCRIPT_NAME"
 echo "📤 Uploading website files to S3..."
-aws s3 cp web/ s3://$S3_BUCKET_NAME/ --recursive
+
+if ! aws s3 cp web/ s3://$S3_BUCKET_NAME/ --recursive; then
+    log_error "Failed to upload website files to S3 bucket: $S3_BUCKET_NAME" "$SCRIPT_NAME"
+    echo "💡 Check that the S3 bucket exists and you have write permissions"
+    exit 1
+fi
+log_success "Website files uploaded successfully to S3" "$SCRIPT_NAME"
 
 # Create a CloudFront invalidation
+log_info "Creating CloudFront invalidation" "$SCRIPT_NAME"
 echo "🔄 Creating CloudFront invalidation..."
-DISTRIBUTION_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?DomainName=='$(echo $CLOUDFRONT_URL | sed 's|https://||')'].Id" --output text)
-if [ -n "$DISTRIBUTION_ID" ]; then
-    aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*"
-    echo "✅ Created CloudFront invalidation for all paths"
+
+if [ -z "$CLOUDFRONT_URL" ]; then
+    log_error "CLOUDFRONT_URL is not set - cannot create invalidation" "$SCRIPT_NAME"
+    exit 1
+fi
+
+DISTRIBUTION_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?DomainName=='$(echo $CLOUDFRONT_URL | sed 's|https://||')'].Id" --output text 2>/dev/null)
+if [ $? -ne 0 ]; then
+    log_error "Failed to list CloudFront distributions" "$SCRIPT_NAME"
+    exit 1
+fi
+
+if [ -n "$DISTRIBUTION_ID" ] && [ "$DISTRIBUTION_ID" != "None" ]; then
+    if aws cloudfront create-invalidation --distribution-id $DISTRIBUTION_ID --paths "/*" >/dev/null 2>&1; then
+        log_success "Created CloudFront invalidation for all paths" "$SCRIPT_NAME"
+        echo "✅ Created CloudFront invalidation for all paths"
+    else
+        log_warning "Failed to create CloudFront invalidation, but continuing" "$SCRIPT_NAME"
+        echo "⚠️ Warning: Failed to create CloudFront invalidation"
+    fi
 else
+    log_warning "Could not determine CloudFront distribution ID" "$SCRIPT_NAME"
     echo "⚠️ Warning: Could not determine CloudFront distribution ID"
 fi
 

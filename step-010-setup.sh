@@ -102,10 +102,10 @@ echo "🔍 Checking if S3 bucket '$BUCKET_NAME' already exists..."
 if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
     echo "⚠️  S3 bucket '$BUCKET_NAME' already exists!"
     echo
-    echo "Options:"
-    echo "1. Use existing bucket (recommended for redeployment)"
-    echo "2. Create new bucket with timestamp suffix"
-    echo "3. Enter different bucket name"
+    echo "What would you like to do?"
+    echo "1. Use existing bucket '$BUCKET_NAME' (reuse existing files/data)"
+    echo "2. Create new bucket '${BUCKET_NAME}-TIMESTAMP' (fresh empty bucket)"
+    echo "3. Enter a completely different bucket name"
     echo
     read -p "Choose option (1/2/3): " BUCKET_CHOICE
     
