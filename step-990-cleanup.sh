@@ -350,37 +350,52 @@ if [ "$STACK_EXISTS" = true ]; then
             log_info "Found $(echo "$ALL_RESOURCES" | jq length) resources in DELETE_FAILED stack" "$SCRIPT_NAME"
             
             # Force delete each resource type we know how to handle
-            log_info "Force deleting stack resources individually..." "$SCRIPT_NAME"
+            # Delete in dependency order (API Gateway first, then Lambda functions)
+            log_info "Force deleting stack resources individually (in dependency order)..." "$SCRIPT_NAME"
             
-            # Force delete Lambda functions
-            echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::Lambda::Function") | .Id' | while read -r function_name; do
-                if [ -n "$function_name" ] && [ "$function_name" != "null" ]; then
-                    log_info "Force deleting Lambda function: $function_name" "$SCRIPT_NAME"
-                    aws lambda delete-function --function-name "$function_name" 2>/dev/null || log_warning "Failed to force delete Lambda function: $function_name" "$SCRIPT_NAME"
-                fi
-            done
-            
-            # Force delete CloudFront distributions
-            echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::CloudFront::Distribution") | .Id' | while read -r distribution_id; do
-                if [ -n "$distribution_id" ] && [ "$distribution_id" != "null" ]; then
-                    log_info "Force deleting CloudFront distribution: $distribution_id" "$SCRIPT_NAME"
-                    # Disable distribution first
-                    DIST_CONFIG=$(aws cloudfront get-distribution-config --id "$distribution_id" 2>/dev/null)
-                    if [ $? -eq 0 ]; then
-                        ETAG=$(echo "$DIST_CONFIG" | jq -r '.ETag')
-                        echo "$DIST_CONFIG" | jq '.DistributionConfig.Enabled = false' > /tmp/dist-config.json
-                        aws cloudfront update-distribution --id "$distribution_id" --distribution-config "file:///tmp/dist-config.json" --if-match "$ETAG" 2>/dev/null || true
-                        log_info "CloudFront distribution $distribution_id disabled, deletion will complete automatically" "$SCRIPT_NAME"
-                        rm -f /tmp/dist-config.json
-                    fi
-                fi
-            done
-            
-            # Force delete API Gateway Rest APIs
+            # First: Delete API Gateway Rest APIs (they reference Lambda functions)
             echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::ApiGateway::RestApi") | .Id' | while read -r api_id; do
                 if [ -n "$api_id" ] && [ "$api_id" != "null" ]; then
                     log_info "Force deleting API Gateway: $api_id" "$SCRIPT_NAME"
                     aws apigateway delete-rest-api --rest-api-id "$api_id" 2>/dev/null || log_warning "Failed to force delete API Gateway: $api_id" "$SCRIPT_NAME"
+                fi
+            done
+            
+            # Second: Delete Lambda functions (after API Gateway is gone)
+            echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::Lambda::Function") | .Id' | while read -r function_name; do
+                if [ -n "$function_name" ] && [ "$function_name" != "null" ]; then
+                    log_info "Force deleting Lambda function: $function_name" "$SCRIPT_NAME"
+                    # Wait a moment for ENI cleanup from API Gateway deletion
+                    sleep 2
+                    if aws lambda delete-function --function-name "$function_name" 2>/dev/null; then
+                        log_success "Deleted Lambda function: $function_name" "$SCRIPT_NAME"
+                    else
+                        log_warning "Failed to force delete Lambda function: $function_name (may have dependencies)" "$SCRIPT_NAME"
+                    fi
+                fi
+            done
+            
+            # Third: Delete CloudFront distributions (disable first, delete happens async)
+            echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::CloudFront::Distribution") | .Id' | while read -r distribution_id; do
+                if [ -n "$distribution_id" ] && [ "$distribution_id" != "null" ]; then
+                    log_info "Force deleting CloudFront distribution: $distribution_id" "$SCRIPT_NAME"
+                    # Disable distribution first (required before deletion)
+                    DIST_CONFIG=$(aws cloudfront get-distribution-config --id "$distribution_id" 2>/dev/null)
+                    if [ $? -eq 0 ]; then
+                        ETAG=$(echo "$DIST_CONFIG" | jq -r '.ETag')
+                        if echo "$DIST_CONFIG" | jq '.DistributionConfig.Enabled = false' > /tmp/dist-config.json 2>/dev/null; then
+                            if aws cloudfront update-distribution --id "$distribution_id" --distribution-config "file:///tmp/dist-config.json" --if-match "$ETAG" 2>/dev/null; then
+                                log_success "CloudFront distribution $distribution_id disabled, will delete automatically" "$SCRIPT_NAME"
+                            else
+                                log_warning "Failed to disable CloudFront distribution: $distribution_id" "$SCRIPT_NAME"
+                            fi
+                            rm -f /tmp/dist-config.json
+                        else
+                            log_warning "Failed to prepare CloudFront config for: $distribution_id" "$SCRIPT_NAME"
+                        fi
+                    else
+                        log_warning "Could not get CloudFront distribution config: $distribution_id" "$SCRIPT_NAME"
+                    fi
                 fi
             done
             
@@ -430,7 +445,11 @@ if [ "$STACK_EXISTS" = true ]; then
             
             # Try to delete the stack again after cleaning up resources
             log_info "Attempting final stack deletion after force cleanup..." "$SCRIPT_NAME"
-            aws cloudformation delete-stack --stack-name $STACK_NAME 2>/dev/null || true
+            if aws cloudformation delete-stack --stack-name $STACK_NAME 2>/dev/null; then
+                log_info "Stack deletion re-initiated successfully" "$SCRIPT_NAME"
+            else
+                log_warning "Failed to re-initiate stack deletion, but individual resources were cleaned" "$SCRIPT_NAME"
+            fi
             
         else
             log_info "Stack may still be deleting or already deleted" "$SCRIPT_NAME"
