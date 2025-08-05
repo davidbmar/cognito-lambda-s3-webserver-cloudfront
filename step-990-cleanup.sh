@@ -276,13 +276,14 @@ echo "📦 S3 Data Bucket ($S3_BUCKET_NAME):"
 if [ "$BUCKET_EXISTS" = true ]; then
     if [ "$BUCKET_CREATED_BY_STACK" = true ]; then
         echo "  ⚠️  Status: Created by this stack"
-        echo "  ⚠️  Decision: You'll be asked whether to delete"
+        echo "  ❓ Decision: You'll be asked later whether to delete or keep"
         echo "  📊 Contains: $OBJECT_COUNT objects (${BUCKET_SIZE:-0 bytes})"
     else
-        echo "  ✅ Status: PRE-EXISTING bucket"
-        echo "  💡 Recommendation: KEEP (existed before deployment)"
+        echo "  ✅ Status: PRE-EXISTING bucket (existed before deployment)"
+        echo "  🛡️  Default: WILL BE KEPT SAFE (you can override later if needed)"
         echo "  📊 Contains: $OBJECT_COUNT objects (${BUCKET_SIZE:-0 bytes})"
-        echo "  ⚠️  Note: Bucket policy may be updated to remove CloudFront access"
+        echo "  📋 Decision: You'll be prompted later with a safety warning"
+        echo "  ℹ️  Note: Only bucket policy will be updated (CloudFront access removed)"
     fi
 else
     echo "  ❌ Bucket does not exist"
@@ -450,11 +451,16 @@ if [ "$BUCKET_EXISTS" = true ]; then
         read -p "Delete this bucket and ALL its contents? (y/N): " DELETE_BUCKET_CONFIRM
     else
         echo "Status: PRE-EXISTING bucket (existed before this deployment)"
+        echo "Default Action: KEEP SAFE (recommended)"
         echo
         echo "⚠️  WARNING: This bucket existed BEFORE your deployment!"
         echo "⚠️  It may contain important data or be used by other applications."
+        echo "⚠️  Deleting it could break other systems or lose important data."
         echo
-        read -p "Are you SURE you want to delete this pre-existing bucket? (y/N): " DELETE_BUCKET_CONFIRM
+        echo "The script will KEEP this bucket by default."
+        echo "Only answer 'y' if you are absolutely certain you want to delete it."
+        echo
+        read -p "Override default and DELETE this pre-existing bucket? (y/N) [Default: N]: " DELETE_BUCKET_CONFIRM
     fi
     
     if [ "$DELETE_BUCKET_CONFIRM" = "y" ] || [ "$DELETE_BUCKET_CONFIRM" = "Y" ]; then
@@ -469,7 +475,7 @@ if [ "$BUCKET_EXISTS" = true ]; then
             echo "⚠️  Bucket WILL BE DELETED!"
         fi
     else
-        echo "✅ Bucket will be PRESERVED"
+        echo "✅ Bucket will be PRESERVED (safe choice)"
     fi
     echo "=================================================="
 fi
@@ -517,9 +523,15 @@ fi
 echo
 if [ "$DELETE_BUCKET" = true ]; then
     echo "S3 Data Bucket: DELETED ✅"
+    echo "  → $S3_BUCKET_NAME and all contents removed"
 else
-    echo "S3 Data Bucket: PRESERVED ✅"
-    echo "  → $S3_BUCKET_NAME"
+    echo "S3 Data Bucket: KEPT SAFE ✅"
+    echo "  → $S3_BUCKET_NAME preserved with all data intact"
+    if [ "$BUCKET_CREATED_BY_STACK" = false ]; then
+        echo "  → Pre-existing bucket was protected from deletion"
+    else
+        echo "  → You chose to keep this bucket"
+    fi
 fi
 echo
 echo "To redeploy: ./step-010-setup.sh followed by ./step-020-deploy.sh"
@@ -588,11 +600,11 @@ echo -e "${BLUE}  • Deployment buckets: Cleaned up${NC}"
 echo -e "${BLUE}  • Orphaned resources: Scanned and cleaned${NC}"
 echo -e "${BLUE}  • Lambda functions & Log groups: Cleaned up${NC}"
 if [ "$DELETE_BUCKET" = true ]; then
-    echo -e "${GREEN}  • S3 data bucket: DELETED${NC}"
+    echo -e "${RED}  • S3 data bucket: DELETED (all data removed)${NC}"
 elif [ "$BUCKET_CREATED_BY_STACK" = false ]; then
-    echo -e "${GREEN}  • S3 data bucket: PRESERVED (pre-existing bucket)${NC}"
+    echo -e "${GREEN}  • S3 data bucket: KEPT SAFE (pre-existing bucket protected)${NC}"
 else
-    echo -e "${YELLOW}  • S3 data bucket: PRESERVED (user choice)${NC}"
+    echo -e "${GREEN}  • S3 data bucket: KEPT SAFE (user chose to preserve)${NC}"
 fi
 
 echo
