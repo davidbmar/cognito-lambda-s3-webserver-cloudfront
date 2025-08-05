@@ -345,13 +345,15 @@ if [ "$STACK_EXISTS" = true ]; then
         if aws cloudformation describe-stacks --stack-name $STACK_NAME 2>/dev/null | grep -q "DELETE_FAILED"; then
             log_error "Stack is in DELETE_FAILED state - will force delete individual resources" "$SCRIPT_NAME"
             
-            # Get all resources from the stack (not just failed ones)
-            ALL_RESOURCES=$(aws cloudformation describe-stack-resources --stack-name $STACK_NAME --query "StackResources[].{Type:ResourceType,Id:PhysicalResourceId,LogicalId:LogicalResourceId}" --output json 2>/dev/null || echo "[]")
-            log_info "Found $(echo "$ALL_RESOURCES" | jq length) resources in DELETE_FAILED stack" "$SCRIPT_NAME"
+            # Get resources that are NOT already deleted (skip DELETE_COMPLETE and DELETE_SKIPPED)
+            ALL_RESOURCES=$(aws cloudformation describe-stack-resources --stack-name $STACK_NAME --query "StackResources[?ResourceStatus != \`DELETE_COMPLETE\` && ResourceStatus != \`DELETE_SKIPPED\`].{Type:ResourceType,Id:PhysicalResourceId,LogicalId:LogicalResourceId,Status:ResourceStatus}" --output json 2>/dev/null || echo "[]")
+            RESOURCE_COUNT=$(echo "$ALL_RESOURCES" | jq length)
+            log_info "Found $RESOURCE_COUNT resources still requiring deletion" "$SCRIPT_NAME"
             
-            # Force delete each resource type we know how to handle
-            # Delete in dependency order (API Gateway first, then Lambda functions)
-            log_info "Force deleting stack resources individually (in dependency order)..." "$SCRIPT_NAME"
+            if [ "$RESOURCE_COUNT" -gt 0 ]; then
+                # Force delete each resource type we know how to handle
+                # Delete in dependency order (API Gateway first, then Lambda functions)
+                log_info "Force deleting stack resources individually (in dependency order)..." "$SCRIPT_NAME"
             
             # First: Delete API Gateway Rest APIs (they reference Lambda functions)
             echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::ApiGateway::RestApi") | .Id' | while read -r api_id; do
@@ -470,7 +472,10 @@ if [ "$STACK_EXISTS" = true ]; then
                 fi
             done
             
-            log_success "Force deletion of stack resources completed" "$SCRIPT_NAME"
+                log_success "Force deletion of stack resources completed" "$SCRIPT_NAME"
+            else
+                log_success "All resources already deleted, no force deletion needed" "$SCRIPT_NAME"
+            fi
             
             # Try to delete the stack again after cleaning up resources
             log_info "Attempting final stack deletion after force cleanup..." "$SCRIPT_NAME"
