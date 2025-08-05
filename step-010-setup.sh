@@ -97,7 +97,44 @@ if [[ ! $BUCKET_NAME =~ ^[a-z0-9.-]+$ ]]; then
     exit 1
 fi
 
-echo "✅ Using bucket name: $BUCKET_NAME"
+# Check if bucket already exists
+echo "🔍 Checking if S3 bucket '$BUCKET_NAME' already exists..."
+if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+    echo "⚠️  S3 bucket '$BUCKET_NAME' already exists!"
+    echo
+    echo "Options:"
+    echo "1. Use existing bucket (recommended for redeployment)"
+    echo "2. Create new bucket with timestamp suffix"
+    echo "3. Enter different bucket name"
+    echo
+    read -p "Choose option (1/2/3): " BUCKET_CHOICE
+    
+    case $BUCKET_CHOICE in
+        1)
+            echo "✅ Using existing bucket: $BUCKET_NAME"
+            ;;
+        2)
+            BUCKET_NAME="${BUCKET_NAME}-${TIMESTAMP}"
+            echo "✅ Using new bucket name: $BUCKET_NAME"
+            ;;
+        3)
+            read -p "Enter new bucket name: " BUCKET_NAME
+            if [[ ! $BUCKET_NAME =~ ^[a-z0-9.-]+$ ]]; then
+                echo "❌ Invalid bucket name. Please use only lowercase letters, numbers, hyphens, and periods."
+                exit 1
+            fi
+            echo "✅ Using bucket name: $BUCKET_NAME"
+            ;;
+        *)
+            echo "❌ Invalid choice. Exiting."
+            exit 1
+            ;;
+    esac
+else
+    echo "✅ Bucket '$BUCKET_NAME' does not exist - will be created during deployment"
+fi
+
+echo "✅ Final bucket name: $BUCKET_NAME"
 
 # Generate unique Cognito domain name
 DEFAULT_COGNITO_DOMAIN="${APP_NAME}-${TIMESTAMP}"
