@@ -357,7 +357,15 @@ if [ "$STACK_EXISTS" = true ]; then
             echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::ApiGateway::RestApi") | .Id' | while read -r api_id; do
                 if [ -n "$api_id" ] && [ "$api_id" != "null" ]; then
                     log_info "Force deleting API Gateway: $api_id" "$SCRIPT_NAME"
-                    aws apigateway delete-rest-api --rest-api-id "$api_id" 2>/dev/null || log_warning "Failed to force delete API Gateway: $api_id" "$SCRIPT_NAME"
+                    aws apigateway delete-rest-api --rest-api-id "$api_id" 2>/dev/null
+                    
+                    # Check if API Gateway actually exists after deletion attempt
+                    sleep 1
+                    if aws apigateway get-rest-api --rest-api-id "$api_id" >/dev/null 2>&1; then
+                        log_warning "API Gateway still exists: $api_id (may have dependencies)" "$SCRIPT_NAME"
+                    else
+                        log_success "Successfully deleted API Gateway: $api_id" "$SCRIPT_NAME"
+                    fi
                 fi
             done
             
@@ -367,10 +375,14 @@ if [ "$STACK_EXISTS" = true ]; then
                     log_info "Force deleting Lambda function: $function_name" "$SCRIPT_NAME"
                     # Wait a moment for ENI cleanup from API Gateway deletion
                     sleep 2
-                    if aws lambda delete-function --function-name "$function_name" 2>/dev/null; then
-                        log_success "Deleted Lambda function: $function_name" "$SCRIPT_NAME"
+                    aws lambda delete-function --function-name "$function_name" 2>/dev/null
+                    
+                    # Check if function actually exists after deletion attempt
+                    sleep 1
+                    if aws lambda get-function --function-name "$function_name" >/dev/null 2>&1; then
+                        log_warning "Lambda function still exists: $function_name (may have dependencies - will retry later)" "$SCRIPT_NAME"
                     else
-                        log_warning "Failed to force delete Lambda function: $function_name (may have dependencies)" "$SCRIPT_NAME"
+                        log_success "Successfully deleted Lambda function: $function_name" "$SCRIPT_NAME"
                     fi
                 fi
             done
@@ -408,8 +420,17 @@ if [ "$STACK_EXISTS" = true ]; then
                     if [ -n "$DOMAIN" ] && [ "$DOMAIN" != "None" ] && [ "$DOMAIN" != "null" ]; then
                         log_info "Deleting Cognito domain: $DOMAIN" "$SCRIPT_NAME"
                         aws cognito-idp delete-user-pool-domain --domain "$DOMAIN" 2>/dev/null || true
+                        sleep 2
                     fi
-                    aws cognito-idp delete-user-pool --user-pool-id "$user_pool_id" 2>/dev/null || log_warning "Failed to force delete User Pool: $user_pool_id" "$SCRIPT_NAME"
+                    aws cognito-idp delete-user-pool --user-pool-id "$user_pool_id" 2>/dev/null
+                    
+                    # Check if User Pool actually exists after deletion attempt
+                    sleep 1
+                    if aws cognito-idp describe-user-pool --user-pool-id "$user_pool_id" >/dev/null 2>&1; then
+                        log_warning "Cognito User Pool still exists: $user_pool_id (may have dependencies)" "$SCRIPT_NAME"
+                    else
+                        log_success "Successfully deleted Cognito User Pool: $user_pool_id" "$SCRIPT_NAME"
+                    fi
                 fi
             done
             
@@ -417,7 +438,15 @@ if [ "$STACK_EXISTS" = true ]; then
             echo "$ALL_RESOURCES" | jq -r '.[] | select(.Type == "AWS::Cognito::IdentityPool") | .Id' | while read -r identity_pool_id; do
                 if [ -n "$identity_pool_id" ] && [ "$identity_pool_id" != "null" ]; then
                     log_info "Force deleting Cognito Identity Pool: $identity_pool_id" "$SCRIPT_NAME"
-                    aws cognito-identity delete-identity-pool --identity-pool-id "$identity_pool_id" 2>/dev/null || log_warning "Failed to force delete Identity Pool: $identity_pool_id" "$SCRIPT_NAME"
+                    aws cognito-identity delete-identity-pool --identity-pool-id "$identity_pool_id" 2>/dev/null
+                    
+                    # Check if Identity Pool actually exists after deletion attempt
+                    sleep 1
+                    if aws cognito-identity describe-identity-pool --identity-pool-id "$identity_pool_id" >/dev/null 2>&1; then
+                        log_warning "Cognito Identity Pool still exists: $identity_pool_id (may have dependencies)" "$SCRIPT_NAME"
+                    else
+                        log_success "Successfully deleted Cognito Identity Pool: $identity_pool_id" "$SCRIPT_NAME"
+                    fi
                 fi
             done
             
