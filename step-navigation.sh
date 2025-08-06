@@ -40,6 +40,7 @@ declare -A STEP_DESCRIPTIONS=(
     ["step-040-test.sh"]="Test application functionality and API endpoints"
     ["step-050-configure-eventbridge.sh"]="Configure EventBridge integration for event publishing"
     ["step-055-test-eventbridge.sh"]="Test EventBridge integration with monitoring guidance"
+    ["step-980-cleanup-cognito.sh"]="Clean up Cognito resources (domains and user pools)"
     ["step-990-cleanup.sh"]="Clean up AWS resources (intelligent bucket preservation)"
 )
 
@@ -54,6 +55,7 @@ declare -A STEP_PREREQUISITES=(
     ["step-040-test.sh"]="step-025-update-web-files.sh"  # Can test without user creation
     ["step-050-configure-eventbridge.sh"]="step-025-update-web-files.sh"
     ["step-055-test-eventbridge.sh"]="step-050-configure-eventbridge.sh"
+    ["step-980-cleanup-cognito.sh"]=""  # Can run anytime for pre-cleanup
     ["step-990-cleanup.sh"]=""  # Can run anytime
 )
 

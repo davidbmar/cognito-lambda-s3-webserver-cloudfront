@@ -152,7 +152,13 @@ if [ -n "$USER_POOL_ID" ]; then
         
         # Check domain
         if [ -n "$COGNITO_DOMAIN" ]; then
-            echo "   🌐 Domain: $COGNITO_DOMAIN"
+            DOMAIN_STATUS=$(aws cognito-idp describe-user-pool-domain --domain "$COGNITO_DOMAIN" --query 'DomainDescription.Status' --output text 2>/dev/null || echo "NOT_FOUND")
+            if [ "$DOMAIN_STATUS" != "NOT_FOUND" ] && [ "$DOMAIN_STATUS" != "None" ]; then
+                echo "   🌐 Domain: $COGNITO_DOMAIN (Status: $DOMAIN_STATUS)"
+                echo "   ⚠️  WARNING: Cognito domain exists - may block stack deletion"
+            else
+                echo "   🌐 Domain: $COGNITO_DOMAIN (Not found)"
+            fi
         fi
     else
         echo "   ❌ User Pool not found"
@@ -163,8 +169,14 @@ fi
 
 IDENTITY_POOL_EXISTS=false
 if [ -n "$IDENTITY_POOL_ID" ]; then
-    IDENTITY_POOL_EXISTS=true
-    echo "   ✅ Identity Pool: $IDENTITY_POOL_ID"
+    if aws cognito-identity describe-identity-pool --identity-pool-id "$IDENTITY_POOL_ID" >/dev/null 2>&1; then
+        IDENTITY_POOL_EXISTS=true
+        echo "   ✅ Identity Pool: $IDENTITY_POOL_ID"
+    else
+        echo "   ❌ Identity Pool not found"
+    fi
+else
+    echo "   ❌ No Identity Pool configured"
 fi
 echo
 
@@ -216,17 +228,25 @@ echo
 
 # 8. Check Deployment Buckets
 echo "8️⃣ Serverless Deployment Buckets:"
+log_info "Checking deployment buckets..." "$SCRIPT_NAME"
 # First check CloudFormation stack for deployment buckets
 DEPLOYMENT_BUCKETS_CF=""
 if [ "$STACK_EXISTS" = true ]; then
     DEPLOYMENT_BUCKETS_CF=$(aws cloudformation describe-stack-resources --stack-name $STACK_NAME --query "StackResources[?ResourceType=='AWS::S3::Bucket' && contains(LogicalResourceId, 'ServerlessDeployment')].PhysicalResourceId" --output text 2>/dev/null || echo "")
 fi
 # Also check by naming pattern
-DEPLOYMENT_BUCKETS_PATTERN=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, '${APP_NAME}-${STAGE}-serverlessdeployment') || starts_with(Name, '${APP_NAME}-serverlessdeploymentbucket')].Name" --output text)
+log_info "Searching for deployment buckets by pattern..." "$SCRIPT_NAME"
+# Get all buckets and filter with grep to avoid complex JMESPath issues
+ALL_BUCKETS=$(timeout 10 aws s3api list-buckets --query "Buckets[*].Name" --output text 2>/dev/null || echo "")
+DEPLOYMENT_BUCKETS_PATTERN=$(echo "$ALL_BUCKETS" | tr '\t' '\n' | grep -E "^${APP_NAME}-${STAGE}-serverlessdeployment|^${APP_NAME}-serverlessdeploymentbucket" | tr '\n' ' ' || echo "")
+log_info "Pattern search completed" "$SCRIPT_NAME"
 # Combine both lists and remove duplicates
+log_info "Combining bucket lists..." "$SCRIPT_NAME"
 DEPLOYMENT_BUCKETS=$(echo "$DEPLOYMENT_BUCKETS_CF $DEPLOYMENT_BUCKETS_PATTERN" | tr ' ' '\n' | sort -u | grep -v '^$' | tr '\n' ' ')
 DEPLOYMENT_BUCKET_COUNT=0
-if [ -n "$(echo $DEPLOYMENT_BUCKETS | xargs)" ]; then
+log_info "Checking deployment buckets: '$DEPLOYMENT_BUCKETS'" "$SCRIPT_NAME"
+# Simplified check without xargs
+if [ -n "${DEPLOYMENT_BUCKETS// /}" ]; then
     for bucket in $DEPLOYMENT_BUCKETS; do
         if [ -n "$bucket" ]; then
             echo "   ✅ $bucket"
@@ -291,6 +311,27 @@ fi
 
 echo
 echo "=================================================="
+
+# Check for Cognito domain that might block stack deletion
+if [ "$USER_POOL_EXISTS" = true ] && [ -n "$COGNITO_DOMAIN" ]; then
+    DOMAIN_STATUS=$(aws cognito-idp describe-user-pool-domain --domain "$COGNITO_DOMAIN" --query 'DomainDescription.Status' --output text 2>/dev/null || echo "NOT_FOUND")
+    if [ "$DOMAIN_STATUS" != "NOT_FOUND" ] && [ "$DOMAIN_STATUS" != "None" ]; then
+        echo
+        echo "💡 RECOMMENDATION: Cognito Domain Detected"
+        echo "=================================================="
+        echo "⚠️  Cognito domain '$COGNITO_DOMAIN' exists and may prevent"
+        echo "   CloudFormation stack deletion from completing successfully."
+        echo
+        echo "🎯 For cleaner deletion, consider running:"
+        echo "   ./step-980-cleanup-cognito.sh"
+        echo
+        echo "   This will handle Cognito resources in the proper order"
+        echo "   and ensure smoother stack deletion."
+        echo "=================================================="
+        echo
+    fi
+fi
+
 echo
 
 # Now ask for confirmation to proceed

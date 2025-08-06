@@ -27,7 +27,10 @@ npm run typecheck
 ./step-20-deploy.sh          # Deploy Lambda functions + infrastructure
 ./step-25-update-web-files.sh # Deploy web files with env substitution
 ./step-30-create-user.sh     # Create test Cognito user (optional)
-./step-99-cleanup.sh         # Intelligent cleanup (preserves existing buckets)
+
+# Cleanup commands (in order)
+./step-980-cleanup-cognito.sh # Clean Cognito resources first (optional but recommended)
+./step-990-cleanup.sh         # Complete resource cleanup (preserves existing buckets)
 ```
 
 ### Template System:
