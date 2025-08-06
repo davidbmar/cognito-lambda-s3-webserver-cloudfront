@@ -98,16 +98,37 @@ if [ -n "$RULES" ] && [ "$RULES" != "None" ]; then
         fi
     done
     
-    # Get rule details
+    # Get rule details with better formatting
     echo
     log_info "Rule details:" "$SCRIPT_NAME"
     for rule in $RULES; do
         if [ -n "$rule" ] && [ "$rule" != "None" ]; then
-            RULE_DETAILS=$(aws events describe-rule --name "$rule" --event-bus-name "$EVENT_BUS_NAME" 2>/dev/null)
+            RULE_DETAILS=$(aws events describe-rule --name "$rule" --event-bus-name "$EVENT_BUS_NAME" --output json 2>/dev/null)
             if [ $? -eq 0 ]; then
-                echo "   📋 $rule:"
-                echo "      State: $(echo "$RULE_DETAILS" | grep -o '"State":"[^"]*' | cut -d'"' -f4)"
-                echo "      Pattern: $(echo "$RULE_DETAILS" | grep -o '"EventPattern":"[^"]*' | cut -d'"' -f4 | head -c 50)..."
+                # Extract key information from the rule
+                STATE=$(echo "$RULE_DETAILS" | jq -r '.State // "UNKNOWN"')
+                DESCRIPTION=$(echo "$RULE_DETAILS" | jq -r '.Description // "No description"' | head -c 60)
+                
+                # Parse the event pattern to extract source and detail-type
+                EVENT_PATTERN=$(echo "$RULE_DETAILS" | jq -r '.EventPattern // "{}"')
+                SOURCE=$(echo "$EVENT_PATTERN" | jq -r '.source[0] // "any"' 2>/dev/null || echo "any")
+                DETAIL_TYPE=$(echo "$EVENT_PATTERN" | jq -r '."detail-type"[0] // "any"' 2>/dev/null || echo "any")
+                
+                # Get rule targets
+                TARGETS=$(aws events list-targets-by-rule --rule "$rule" --event-bus-name "$EVENT_BUS_NAME" --query 'Targets[*].Arn' --output text 2>/dev/null | head -c 80)
+                TARGET_COUNT=$(aws events list-targets-by-rule --rule "$rule" --event-bus-name "$EVENT_BUS_NAME" --query 'length(Targets)' --output text 2>/dev/null || echo "0")
+                
+                # Display formatted information
+                echo "   📋 $rule"
+                echo "      Status: $STATE"
+                echo "      Triggers on: \"$DETAIL_TYPE\" from \"$SOURCE\""
+                if [ -n "$TARGETS" ]; then
+                    echo "      Targets ($TARGET_COUNT): ${TARGETS}..."
+                fi
+                if [ "$DESCRIPTION" != "No description" ]; then
+                    echo "      Description: $DESCRIPTION"
+                fi
+                echo
             fi
         fi
     done
