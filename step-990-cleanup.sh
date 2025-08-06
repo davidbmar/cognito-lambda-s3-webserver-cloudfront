@@ -197,14 +197,17 @@ echo
 
 # 6. Check API Gateway
 echo "6️⃣ API Gateway:"
+API_EXISTS=false
+API_ID=""
 if [ -n "$API_ENDPOINT" ]; then
     # Extract API ID from endpoint
     API_ID=$(echo $API_ENDPOINT | sed 's|https://||' | cut -d'.' -f1)
     if aws apigateway get-rest-api --rest-api-id $API_ID >/dev/null 2>&1; then
+        API_EXISTS=true
         echo "   ✅ Found: $API_ID"
         echo "   🌐 Endpoint: $API_ENDPOINT"
     else
-        echo "   ❌ Not found"
+        echo "   ❌ Not found (API ID from .env: $API_ID)"
     fi
 else
     echo "   ❌ No API endpoint configured"
@@ -242,7 +245,14 @@ DEPLOYMENT_BUCKETS_PATTERN=$(echo "$ALL_BUCKETS" | tr '\t' '\n' | grep -E "^${AP
 log_info "Pattern search completed" "$SCRIPT_NAME"
 # Combine both lists and remove duplicates
 log_info "Combining bucket lists..." "$SCRIPT_NAME"
-DEPLOYMENT_BUCKETS=$(echo "$DEPLOYMENT_BUCKETS_CF $DEPLOYMENT_BUCKETS_PATTERN" | tr ' ' '\n' | sort -u | grep -v '^$' | tr '\n' ' ')
+# Use a simpler approach to combine and deduplicate
+DEPLOYMENT_BUCKETS=""
+for bucket in $DEPLOYMENT_BUCKETS_CF $DEPLOYMENT_BUCKETS_PATTERN; do
+    if [ -n "$bucket" ] && [[ ! " $DEPLOYMENT_BUCKETS " =~ " $bucket " ]]; then
+        DEPLOYMENT_BUCKETS="$DEPLOYMENT_BUCKETS $bucket"
+    fi
+done
+DEPLOYMENT_BUCKETS=$(echo "$DEPLOYMENT_BUCKETS" | xargs)  # Trim whitespace
 DEPLOYMENT_BUCKET_COUNT=0
 log_info "Checking deployment buckets: '$DEPLOYMENT_BUCKETS'" "$SCRIPT_NAME"
 # Simplified check without xargs
@@ -278,7 +288,7 @@ fi
 if [ "$IDENTITY_POOL_EXISTS" = true ]; then
     echo "  ✓ Cognito Identity Pool: $IDENTITY_POOL_ID"
 fi
-if [ -n "$API_ENDPOINT" ]; then
+if [ "$API_EXISTS" = true ]; then
     echo "  ✓ API Gateway: $API_ID"
 fi
 if [ $LAMBDA_COUNT -gt 0 ]; then
@@ -718,7 +728,7 @@ fi
 if [ $LAMBDA_COUNT -gt 0 ]; then
     echo "  ✓ Lambda functions"
 fi
-if [ -n "$API_ENDPOINT" ]; then
+if [ "$API_EXISTS" = true ]; then
     echo "  ✓ API Gateway"
 fi
 if [ $DEPLOYMENT_BUCKET_COUNT -gt 0 ]; then
