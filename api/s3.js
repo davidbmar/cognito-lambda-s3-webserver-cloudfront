@@ -152,14 +152,16 @@ module.exports.getDownloadUrl = async (event) => {
 
    
     // REPLACE with this enhanced security check:
-    // Security check: Allow access to user files AND their memory files
+    // Security check: Allow access to user files, memory files, and transcription files
     const userPrefix = `users/${userId}/`;
     const userMemoryPrefix = `claude-memory/${userId}/`;
     const publicMemoryPrefix = `claude-memory/public/`;
+    const transcriptionPrefix = `transcriptions/users/${userId}/`;
     
     if (!decodedKey.startsWith(userPrefix) && 
         !decodedKey.startsWith(userMemoryPrefix) && 
-        !decodedKey.startsWith(publicMemoryPrefix)) {
+        !decodedKey.startsWith(publicMemoryPrefix) &&
+        !decodedKey.startsWith(transcriptionPrefix)) {
       return {
         statusCode: 403,
         headers: {
@@ -167,7 +169,7 @@ module.exports.getDownloadUrl = async (event) => {
           'Access-Control-Allow-Credentials': true,
         },
         body: JSON.stringify({ 
-          error: 'Access denied: You can only access your own files and memory data' 
+          error: 'Access denied: You can only access your own files, memory data, and transcriptions' 
         }),
       };
     }

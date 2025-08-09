@@ -248,35 +248,79 @@
                         const updated = {};
                         recordings.forEach(recording => {
                             if (!prev[recording.id]) { // Only set if not already set
-                                updated[recording.id] = `Initial transcription at ${timestamp} - Processing ${recording.name}`;
+                                updated[recording.id] = `Transcription requested for ${recording.name} - processing...`;
                             } else {
                                 updated[recording.id] = prev[recording.id]; // Keep existing
                             }
                         });
-                        log(`Initial transcriptions set for ${recordings.length} recordings`);
+                        log(`Transcription processing initiated for ${recordings.length} recordings`);
                         return updated;
                     });
                 }
             }, [recordings]);
 
-            // Update transcriptions every 10 seconds for testing
-            useEffect(() => {
-                const interval = setInterval(() => {
-                    if (recordings.length > 0) {
-                        const timestamp = new Date().toLocaleTimeString();
-                        setTranscriptions(prev => {
-                            const updated = {};
-                            recordings.forEach(recording => {
-                                updated[recording.id] = `Transcription updated at ${timestamp} - Sample text for ${recording.name}`;
-                            });
-                            log('Transcriptions updated at ' + timestamp + ` for ${recordings.length} recordings`);
-                            return updated;
-                        });
+            // Fetch real transcription from S3
+            const fetchTranscription = async (recording) => {
+                try {
+                    // Extract session info from recording
+                    const sessionId = recording.sessionId;
+                    const chunkNumber = recording.chunkNumber;
+                    
+                    // Build transcription file path in S3
+                    const transcriptionKey = `transcriptions/users/${user.userId}/audio/sessions/${sessionId}/chunk-${chunkNumber.toString().padStart(3, '0')}.webm.json`;
+                    
+                    // Get pre-signed URL for transcription file
+                    const response = await makeAuthenticatedRequest(`${config.apiUrl.replace('/data', '/s3/download')}/${encodeURIComponent(transcriptionKey)}`);
+                    
+                    // Fetch the transcription data
+                    const transcriptionResponse = await fetch(response.downloadUrl);
+                    
+                    if (transcriptionResponse.ok) {
+                        const transcriptionData = await transcriptionResponse.json();
+                        return transcriptionData.text || 'Transcription completed - no text found';
+                    } else if (transcriptionResponse.status === 404) {
+                        return null; // Transcription not ready yet
+                    } else {
+                        throw new Error(`Failed to fetch transcription: ${transcriptionResponse.status}`);
                     }
-                }, 10000); // Update every 10 seconds
+                } catch (error) {
+                    log(`Error fetching transcription for ${recording.name}: ${error.message}`);
+                    return null;
+                }
+            };
+
+            // Poll for real transcriptions every 10 seconds
+            useEffect(() => {
+                const interval = setInterval(async () => {
+                    if (recordings.length > 0 && user) {
+                        const timestamp = new Date().toLocaleTimeString();
+                        
+                        // Check transcriptions for each recording
+                        for (const recording of recordings) {
+                            // Only check if we don't already have a final transcription
+                            if (!transcriptions[recording.id] || transcriptions[recording.id].includes('Processing') || transcriptions[recording.id].includes('Initial')) {
+                                const transcriptionText = await fetchTranscription(recording);
+                                
+                                if (transcriptionText) {
+                                    setTranscriptions(prev => ({
+                                        ...prev,
+                                        [recording.id]: transcriptionText
+                                    }));
+                                    log(`Transcription loaded for ${recording.name}: ${transcriptionText.substring(0, 50)}...`);
+                                } else {
+                                    // Update processing status
+                                    setTranscriptions(prev => ({
+                                        ...prev,
+                                        [recording.id]: `Processing transcription... (checked at ${timestamp})`
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                }, 10000); // Check every 10 seconds
 
                 return () => clearInterval(interval);
-            }, [recordings]);
+            }, [recordings, user, transcriptions]);
 
             // Load user's audio sessions
             const loadSessions = async () => {
