@@ -1,4 +1,4 @@
-service: dbm-cf-app
+service: dbm-cf-fresh
 
 provider:
   name: aws
