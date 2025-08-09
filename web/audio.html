@@ -222,6 +222,7 @@
             
             const [recordings, setRecordings] = useState([]);
             const [playingId, setPlayingId] = useState(null);
+            const [transcriptions, setTranscriptions] = useState({});
 
             // Check authentication on mount
             useEffect(() => {
@@ -238,6 +239,44 @@
                 // Load previous sessions
                 loadSessions();
             }, []);
+
+            // Initialize transcriptions immediately when recordings change
+            useEffect(() => {
+                if (recordings.length > 0) {
+                    const timestamp = new Date().toLocaleTimeString();
+                    setTranscriptions(prev => {
+                        const updated = {};
+                        recordings.forEach(recording => {
+                            if (!prev[recording.id]) { // Only set if not already set
+                                updated[recording.id] = `Initial transcription at ${timestamp} - Processing ${recording.name}`;
+                            } else {
+                                updated[recording.id] = prev[recording.id]; // Keep existing
+                            }
+                        });
+                        log(`Initial transcriptions set for ${recordings.length} recordings`);
+                        return updated;
+                    });
+                }
+            }, [recordings]);
+
+            // Update transcriptions every 10 seconds for testing
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    if (recordings.length > 0) {
+                        const timestamp = new Date().toLocaleTimeString();
+                        setTranscriptions(prev => {
+                            const updated = {};
+                            recordings.forEach(recording => {
+                                updated[recording.id] = `Transcription updated at ${timestamp} - Sample text for ${recording.name}`;
+                            });
+                            log('Transcriptions updated at ' + timestamp + ` for ${recordings.length} recordings`);
+                            return updated;
+                        });
+                    }
+                }, 10000); // Update every 10 seconds
+
+                return () => clearInterval(interval);
+            }, [recordings]);
 
             // Load user's audio sessions
             const loadSessions = async () => {
@@ -725,34 +764,52 @@
                                 
                                 <div className="space-y-1">
                                     {recordings.map((recording) => (
-                                        <div key={recording.id} className="recording-item">
-                                            <div className="recording-col-left">
-                                                <div className="recording-name">{recording.name}</div>
-                                                <div className="recording-date">
-                                                    {recording.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                        <div key={recording.id} className="recording-item" style={{marginBottom: '12px'}}>
+                                            <div>
+                                                <div className="recording-col-left">
+                                                    <div className="recording-name">{recording.name}</div>
+                                                    <div className="recording-date">
+                                                        {recording.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="recording-col-right">
+                                                    <div className="recording-metadata">
+                                                        <span style={{color: getSyncStatusColor(recording.syncStatus)}}>
+                                                            {getSyncStatusIcon(recording.syncStatus)}
+                                                        </span>
+                                                        <span>{recording.duration}s • {(recording.size * 1000).toFixed(0)}KB</span>
+                                                    </div>
+                                                    <div className="recording-actions">
+                                                        <button
+                                                            className="btn btn-outline icon-btn"
+                                                            onClick={() => handlePlay(recording.id)}
+                                                        >
+                                                            {playingId === recording.id ? <PauseIcon /> : <PlayIcon />}
+                                                        </button>
+                                                        <button 
+                                                            className="btn btn-outline icon-btn"
+                                                            onClick={() => handleDelete(recording.id)}
+                                                        >
+                                                            <TrashIcon />
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            
-                                            <div className="recording-col-right">
-                                                <div className="recording-metadata">
-                                                    <span style={{color: getSyncStatusColor(recording.syncStatus)}}>
-                                                        {getSyncStatusIcon(recording.syncStatus)}
-                                                    </span>
-                                                    <span>{recording.duration}s • {(recording.size * 1000).toFixed(0)}KB</span>
-                                                </div>
-                                                <div className="recording-actions">
-                                                    <button
-                                                        className="btn btn-outline icon-btn"
-                                                        onClick={() => handlePlay(recording.id)}
-                                                    >
-                                                        {playingId === recording.id ? <PauseIcon /> : <PlayIcon />}
-                                                    </button>
-                                                    <button 
-                                                        className="btn btn-outline icon-btn"
-                                                        onClick={() => handleDelete(recording.id)}
-                                                    >
-                                                        <TrashIcon />
-                                                    </button>
+                                            {/* Always show transcription area for debugging */}
+                                            <div style={{
+                                                marginTop: '8px',
+                                                padding: '8px',
+                                                backgroundColor: transcriptions[recording.id] ? 'rgba(59, 130, 246, 0.1)' : 'rgba(156, 163, 175, 0.1)',
+                                                borderRadius: '4px',
+                                                fontSize: '12px',
+                                                color: transcriptions[recording.id] ? '#3b82f6' : '#6b7280',
+                                                fontStyle: 'italic',
+                                                border: '1px dashed rgba(156, 163, 175, 0.3)'
+                                            }}>
+                                                📝 {transcriptions[recording.id] || `Waiting for transcription... (${recording.id})`}
+                                                <div style={{fontSize: '10px', marginTop: '4px', opacity: 0.7}}>
+                                                    Debug: recordings={recordings.length}, transcriptions={Object.keys(transcriptions).length}
                                                 </div>
                                             </div>
                                         </div>

@@ -17,6 +17,19 @@ import unicodedata
 import argparse
 from pathlib import Path
 
+def load_env_file():
+    """Load environment variables from .env file"""
+    env_vars = {}
+    env_file = Path('.env')
+    if env_file.exists():
+        with open(env_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    env_vars[key.strip()] = value.strip()
+    return env_vars
+
 def normalize_filename(filename):
     """Normalize filename to handle Unicode characters"""
     # Normalize Unicode characters
@@ -115,9 +128,13 @@ def search_and_download_file(bucket_name, search_term, download_dir='/tmp'):
         return []
 
 def main():
+    # Load environment variables from .env file
+    env_vars = load_env_file()
+    default_bucket = env_vars.get('S3_BUCKET_NAME', 'dbm-cf-app-aug5-website-1754453358-821850226835')
+    
     parser = argparse.ArgumentParser(description='Search and download files from S3 bucket')
     parser.add_argument('search_term', help='Search term to find files')
-    parser.add_argument('--bucket', default='dbm-cf-2-web', help='S3 bucket name (default: dbm-cf-2-web)')
+    parser.add_argument('--bucket', default=default_bucket, help=f'S3 bucket name (default: from .env)')
     parser.add_argument('--download-dir', default='/tmp', help='Download directory (default: /tmp)')
     
     args = parser.parse_args()
