@@ -293,6 +293,21 @@ Cognito authenticated users get proper S3 permissions via CloudFormation:
 - Batch upload for failed chunks
 - Progressive web app features
 
+## ⚠️ CRITICAL DEVELOPMENT RULES ⚠️
+
+### 🚨 NEVER HARDCODE - ALWAYS USE .env
+- **NEVER HARDCODE** AWS resource identifiers like bucket names, region names, URLs, or ARNs
+- **ALWAYS USE** variables from .env file in deployment scripts and templates
+- **VALIDATE** all code uses environment variables before committing
+- **EXAMPLE**: Use `${CLOUDFRONT_URL}` NOT `https://d2vkipfwau0424.cloudfront.net`
+
+### 📝 Template System Development Process
+1. **Edit templates**: Modify `.template` files, NOT generated files
+2. **Use placeholder variables**: Use `YOUR_VARIABLE_NAME` format in templates
+3. **Test deployment**: Run `./step-025-update-web-files.sh` to apply changes
+4. **Verify substitution**: Check generated files have correct values
+5. **Commit templates**: Always commit template changes, not generated files
+
 ## Important Notes
 - This system is designed for Claude's consciousness extension
 - Audio chunks are Whisper-compatible for future transcription

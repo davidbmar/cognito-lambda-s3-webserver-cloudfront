@@ -474,9 +474,9 @@
                 session.totalSize += audioFile.size;
             });
 
-            // Check for transcripts
+            // Check for transcripts - look for session-level transcripts (not individual chunk transcripts)
             const transcriptFiles = data.files
-                .filter(file => file.key.includes('/transcripts/') && file.key.endsWith('.json'));
+                .filter(file => file.key.includes('/transcripts/') && file.key.endsWith('.json') && !file.key.includes('-chunk-'));
             
             transcriptFiles.forEach(transcriptFile => {
                 const sessionId = extractSessionIdFromTranscriptPath(transcriptFile.key);
@@ -705,7 +705,10 @@
             if (response.ok) {
                 const data = await response.json();
                 const transcriptResponse = await fetch(data.downloadUrl);
-                currentTranscript = await transcriptResponse.json();
+                const rawTranscript = await transcriptResponse.json();
+                
+                // Convert session transcript format to viewer format
+                currentTranscript = convertTranscriptFormat(rawTranscript);
                 displayTranscript();
                 elements.downloadJson.disabled = false;
                 
@@ -718,6 +721,50 @@
             console.error('Failed to load transcript:', error);
             showProcessingMessage();
         }
+    }
+
+    function convertTranscriptFormat(rawTranscript) {
+        // Convert session transcript format to viewer format
+        if (rawTranscript.chunks && Array.isArray(rawTranscript.chunks)) {
+            // Session transcript format: { text: "...", chunks: [{ timestamp: [start, end], text: "..." }] }
+            const paragraphs = rawTranscript.chunks.map((chunk, index) => {
+                const [start, end] = chunk.timestamp || [0, 0];
+                const text = chunk.text || '';
+                
+                // Create words from text (simplified - no per-word timestamps)
+                const words = text.trim().split(/\s+/).map((word, wordIndex) => {
+                    const wordStart = start + (wordIndex / text.split(/\s+/).length) * (end - start);
+                    return {
+                        w: word.replace(/[^\w']/g, ''), // clean punctuation
+                        t: wordStart,
+                        text: word
+                    };
+                }).filter(word => word.w.length > 0);
+                
+                return {
+                    start: start,
+                    end: end,
+                    text: text.trim(),
+                    speaker: 'Speaker',
+                    words: words
+                };
+            });
+            
+            return {
+                paragraphs: paragraphs,
+                metadata: {
+                    duration: rawTranscript.chunks.length > 0 ? 
+                        Math.max(...rawTranscript.chunks.map(c => c.timestamp[1] || 0)) : 0,
+                    wordCount: rawTranscript.chunks.reduce((sum, chunk) => 
+                        sum + (chunk.text ? chunk.text.split(/\s+/).length : 0), 0),
+                    confidence: 0.85, // default confidence
+                    language: 'en'
+                }
+            };
+        }
+        
+        // If already in correct format or unknown format, return as-is
+        return rawTranscript;
     }
 
     function showProcessingMessage() {
