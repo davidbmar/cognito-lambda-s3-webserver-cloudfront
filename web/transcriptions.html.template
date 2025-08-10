@@ -132,11 +132,20 @@
       <!-- Audio Player -->
       <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
         <div class="flex items-center gap-3 mb-3">
+          <button id="prevChunk" class="px-3 py-2 rounded-xl bg-slate-600 text-white hover:bg-slate-700 disabled:bg-slate-400 transition-colors font-medium" disabled>
+            ⏮️
+          </button>
           <button id="playPause" class="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-400 transition-colors font-medium" disabled>
             ▶️ Play
           </button>
+          <button id="nextChunk" class="px-3 py-2 rounded-xl bg-slate-600 text-white hover:bg-slate-700 disabled:bg-slate-400 transition-colors font-medium" disabled>
+            ⏭️
+          </button>
           <input id="seek" type="range" min="0" max="100" value="0" class="flex-1" disabled>
           <div id="clock" class="font-mono text-sm w-24 text-right text-slate-600">0:00 / 0:00</div>
+        </div>
+        <div class="mb-3 text-center">
+          <span id="chunkInfo" class="text-xs text-slate-500">No audio loaded</span>
         </div>
         <audio id="player" class="w-full" preload="metadata" controls></audio>
         <div class="mt-3 text-xs text-slate-500 bg-slate-50 rounded-lg p-3">
@@ -277,6 +286,7 @@
     let allSessions = [];
     let searchMatches = [];
     let isPlaying = false;
+    let currentChunkIndex = 0;
 
     // DOM elements
     const elements = {
@@ -287,6 +297,9 @@
         sessionCount: document.getElementById('sessionCount'),
         player: document.getElementById('player'),
         playPause: document.getElementById('playPause'),
+        prevChunk: document.getElementById('prevChunk'),
+        nextChunk: document.getElementById('nextChunk'),
+        chunkInfo: document.getElementById('chunkInfo'),
         seek: document.getElementById('seek'),
         clock: document.getElementById('clock'),
         transcript: document.getElementById('transcript'),
@@ -322,6 +335,8 @@
     function setupEventListeners() {
         // Audio controls
         elements.playPause.addEventListener('click', togglePlayPause);
+        elements.prevChunk.addEventListener('click', loadPreviousChunk);
+        elements.nextChunk.addEventListener('click', loadNextChunk);
         elements.seek.addEventListener('input', seekAudio);
         elements.rate.addEventListener('change', changePlaybackRate);
 
@@ -331,6 +346,10 @@
         elements.player.addEventListener('ended', () => {
             elements.playPause.textContent = '▶️ Play';
             isPlaying = false;
+            // Auto-advance to next chunk if available
+            if (currentSession && currentChunkIndex < currentSession.chunks.length - 1) {
+                loadNextChunk();
+            }
         });
 
         // Search
@@ -550,13 +569,19 @@
         if (!session) return;
 
         currentSession = session;
+        currentChunkIndex = 0;
         displaySessions(); // Refresh to show active state
+
+        // Sort chunks by chunk number
+        currentSession.chunks.sort((a, b) => a.chunkNumber - b.chunkNumber);
 
         // Load first audio chunk
         if (session.chunks.length > 0) {
-            const firstChunk = session.chunks.sort((a, b) => a.chunkNumber - b.chunkNumber)[0];
-            await loadAudioFromS3(firstChunk.s3Key);
+            await loadChunkByIndex(0);
         }
+        
+        // Update chunk navigation buttons
+        updateChunkNavigation();
 
         // Load transcript if available
         if (session.hasTranscript) {
@@ -600,7 +625,48 @@
             elements.seek.disabled = true;
             elements.jumpToStart.disabled = true;
             elements.shareTimestamp.disabled = true;
+            elements.prevChunk.disabled = true;
+            elements.nextChunk.disabled = true;
         }
+    }
+
+    async function loadChunkByIndex(index) {
+        if (!currentSession || !currentSession.chunks || index < 0 || index >= currentSession.chunks.length) {
+            return;
+        }
+        
+        currentChunkIndex = index;
+        const chunk = currentSession.chunks[index];
+        await loadAudioFromS3(chunk.s3Key);
+        updateChunkNavigation();
+    }
+
+    async function loadPreviousChunk() {
+        if (currentChunkIndex > 0) {
+            await loadChunkByIndex(currentChunkIndex - 1);
+        }
+    }
+
+    async function loadNextChunk() {
+        if (currentSession && currentChunkIndex < currentSession.chunks.length - 1) {
+            await loadChunkByIndex(currentChunkIndex + 1);
+        }
+    }
+
+    function updateChunkNavigation() {
+        if (!currentSession || !currentSession.chunks) {
+            elements.prevChunk.disabled = true;
+            elements.nextChunk.disabled = true;
+            elements.chunkInfo.textContent = 'No audio loaded';
+            return;
+        }
+        
+        const totalChunks = currentSession.chunks.length;
+        const currentChunk = currentChunkIndex + 1;
+        
+        elements.prevChunk.disabled = (currentChunkIndex === 0);
+        elements.nextChunk.disabled = (currentChunkIndex === totalChunks - 1);
+        elements.chunkInfo.textContent = `Chunk ${currentChunk} of ${totalChunks}`;
     }
 
     async function loadTranscript(sessionId) {
