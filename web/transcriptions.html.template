@@ -67,6 +67,20 @@
     }
     .status-processing { background: #fef3c7; color: #92400e; }
     .status-completed { background: #d1fae5; color: #065f46; }
+    
+    /* Current chunk highlighting */
+    .para.current-chunk {
+      background-color: #eff6ff !important;
+      border-color: #3b82f6 !important;
+      border-left-width: 4px !important;
+      transform: scale(1.02);
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+      transition: all 0.3s ease;
+    }
+    .para.current-chunk .text-slate-700 {
+      color: #1e40af !important;
+      font-weight: 500;
+    }
     .status-error { background: #fee2e2; color: #991b1b; }
   </style>
 </head>
@@ -639,6 +653,11 @@
         const chunk = currentSession.chunks[index];
         await loadAudioFromS3(chunk.s3Key);
         updateChunkNavigation();
+        
+        // Update transcript highlighting for current chunk
+        if (currentTranscript) {
+            highlightCurrentChunk();
+        }
     }
 
     async function loadPreviousChunk() {
@@ -780,6 +799,77 @@
         updateTranscriptStats();
         updateProcessingInfo();
         showInfoSections();
+        
+        // Highlight current chunk after initial load
+        if (currentSession && currentChunkIndex >= 0) {
+            setTimeout(() => highlightCurrentChunk(), 100);
+        }
+    }
+
+    function highlightCurrentChunk() {
+        if (!currentTranscript || !currentSession || currentChunkIndex < 0) {
+            return;
+        }
+        
+        // Calculate time range for current chunk (approximately 5 seconds per chunk)
+        const chunkDuration = 5.0; // seconds per chunk
+        const chunkStartTime = currentChunkIndex * chunkDuration;
+        const chunkEndTime = (currentChunkIndex + 1) * chunkDuration;
+        
+        // Remove existing highlighting
+        elements.transcript.querySelectorAll('.para').forEach(para => {
+            para.classList.remove('current-chunk');
+            para.style.backgroundColor = '';
+            para.style.borderColor = '';
+        });
+        
+        // Find and highlight paragraphs within current chunk time range
+        let foundCurrentChunk = false;
+        elements.transcript.querySelectorAll('.para').forEach(para => {
+            const paraIndex = parseInt(para.dataset.para);
+            if (currentTranscript.paragraphs && currentTranscript.paragraphs[paraIndex]) {
+                const paragraph = currentTranscript.paragraphs[paraIndex];
+                const paraStart = paragraph.start || 0;
+                const paraEnd = paragraph.end || (paragraph.start + 2); // fallback duration
+                
+                // Check if paragraph overlaps with current chunk
+                if ((paraStart >= chunkStartTime && paraStart < chunkEndTime) ||
+                    (paraEnd > chunkStartTime && paraEnd <= chunkEndTime) ||
+                    (paraStart <= chunkStartTime && paraEnd >= chunkEndTime)) {
+                    
+                    para.classList.add('current-chunk');
+                    para.style.backgroundColor = '#eff6ff'; // light blue background
+                    para.style.borderColor = '#3b82f6'; // blue border
+                    
+                    // Auto-scroll to first highlighted paragraph
+                    if (!foundCurrentChunk) {
+                        para.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        foundCurrentChunk = true;
+                    }
+                }
+            }
+        });
+        
+        // If no paragraphs found in time range, highlight by estimated position
+        if (!foundCurrentChunk && currentTranscript.paragraphs) {
+            const totalChunks = currentSession.chunks.length;
+            const paragraphsPerChunk = Math.ceil(currentTranscript.paragraphs.length / totalChunks);
+            const startParagraph = currentChunkIndex * paragraphsPerChunk;
+            const endParagraph = Math.min(startParagraph + paragraphsPerChunk, currentTranscript.paragraphs.length);
+            
+            for (let i = startParagraph; i < endParagraph; i++) {
+                const para = elements.transcript.querySelector(`[data-para="${i}"]`);
+                if (para) {
+                    para.classList.add('current-chunk');
+                    para.style.backgroundColor = '#eff6ff';
+                    para.style.borderColor = '#3b82f6';
+                    
+                    if (i === startParagraph) {
+                        para.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+            }
+        }
     }
 
     function updateSessionInfo(session) {
