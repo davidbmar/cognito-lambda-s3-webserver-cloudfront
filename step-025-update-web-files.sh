@@ -115,6 +115,38 @@ elif [ -f web/audio.html ]; then
     echo "✅ audio.html updated with deployment values"
 fi
 
+# Update transcriptions.html from template if it exists
+if [ -f web/transcriptions.html.template ]; then
+    echo "📝 Creating transcriptions.html from template..."
+    cp web/transcriptions.html.template web/transcriptions.html
+    echo "✅ transcriptions.html created from template"
+    
+    echo "📝 Updating transcriptions.html with deployment values..."
+    sed -i.bak "s|YOUR_USER_POOL_ID|$USER_POOL_ID|g" web/transcriptions.html
+    sed -i.bak "s|YOUR_USER_POOL_CLIENT_ID|$USER_POOL_CLIENT_ID|g" web/transcriptions.html
+    sed -i.bak "s|YOUR_IDENTITY_POOL_ID|$IDENTITY_POOL_ID|g" web/transcriptions.html
+    sed -i.bak "s|YOUR_CLOUDFRONT_API_ENDPOINT|$CLOUDFRONT_API_ENDPOINT|g" web/transcriptions.html
+    sed -i.bak "s|YOUR_CLOUDFRONT_S3_API_ENDPOINT|${CLOUDFRONT_URL}/api/s3/list|g" web/transcriptions.html
+    sed -i.bak "s|YOUR_REGION|$REGION|g" web/transcriptions.html
+    sed -i.bak "s|YOUR_APP_URL|$CLOUDFRONT_URL|g" web/transcriptions.html
+    
+    echo "✅ transcriptions.html updated with deployment values"
+elif [ -f web/transcriptions.html ]; then
+    echo "📝 Updating existing transcriptions.html with deployment values..."
+    cp web/transcriptions.html web/transcriptions.html.bak
+    
+    # Update the configuration in transcriptions.html (fallback for existing files)
+    sed -i.tmp "s|userPoolId: '[^']*'|userPoolId: '$USER_POOL_ID'|g" web/transcriptions.html
+    sed -i.tmp "s|userPoolClientId: '[^']*'|userPoolClientId: '$USER_POOL_CLIENT_ID'|g" web/transcriptions.html
+    sed -i.tmp "s|identityPoolId: '[^']*'|identityPoolId: '$IDENTITY_POOL_ID'|g" web/transcriptions.html
+    sed -i.tmp "s|apiUrl: '[^']*'|apiUrl: '$CLOUDFRONT_API_ENDPOINT'|g" web/transcriptions.html
+    sed -i.tmp "s|s3ApiUrl: '[^']*'|s3ApiUrl: '${CLOUDFRONT_URL}/api/s3/list'|g" web/transcriptions.html
+    sed -i.tmp "s|appUrl: '[^']*'|appUrl: '$CLOUDFRONT_URL'|g" web/transcriptions.html
+    
+    rm -f web/transcriptions.html.tmp
+    echo "✅ transcriptions.html updated with deployment values"
+fi
+
 # Upload the website files to S3
 echo "📤 Uploading website files to S3..."
 aws s3 cp web/ s3://$S3_BUCKET_NAME/ --recursive
@@ -139,6 +171,9 @@ echo -e "${BLUE}🔗 Your applications:${NC}"
 echo -e "${GREEN}   📁 File Manager: $CLOUDFRONT_URL${NC}"
 if [ -f web/audio.html ]; then
     echo -e "${GREEN}   🎤 Audio Recorder: $CLOUDFRONT_URL/audio.html${NC}"
+fi
+if [ -f web/transcriptions.html ]; then
+    echo -e "${GREEN}   📄 Transcription Viewer: $CLOUDFRONT_URL/transcriptions.html${NC}"
 fi
 echo
 echo -e "${YELLOW}⚠️ Note: It may take a few minutes for the CloudFront invalidation to complete.${NC}"

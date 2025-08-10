@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Transcription Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/aws-sdk/2.1046.0/aws-sdk.min.js"></script>
+  <style>
+    /* Word-level highlight during playback */
+    .word { 
+      padding: 0 .06rem; 
+      border-radius: .25rem; 
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+    .word:hover { background: rgba(59,130,246,.15); }
+    .word.active { background: rgba(59,130,246,.35); animation: pulse-word 0.5s ease; }
+    .para:hover { background: rgba(0,0,0,.03); }
+    .match { background: rgba(250,204,21,.45); }
+    .thin-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+    .thin-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+    .thin-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+    .thin-scrollbar { scrollbar-width: thin; }
+    
+    /* Loading animation */
+    .loading { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .5; }
+    }
+    
+    @keyframes pulse-word {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+    
+    /* Session item styling */
+    .session-item {
+      transition: all 0.2s ease;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+    .session-item:hover {
+      background: rgba(59,130,246,.1);
+      transform: translateX(2px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .session-item.active {
+      background: rgba(59,130,246,.15);
+      border-color: #3b82f6;
+    }
+    .session-item.processing {
+      border-left: 4px solid #f59e0b;
+    }
+    .session-item.completed {
+      border-left: 4px solid #10b981;
+    }
+    
+    /* Status badges */
+    .status-badge {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-weight: 500;
+    }
+    .status-processing { background: #fef3c7; color: #92400e; }
+    .status-completed { background: #d1fae5; color: #065f46; }
+    .status-error { background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <!-- Top bar -->
+  <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+      <div class="text-xl font-semibold text-slate-800">🎤 Transcription Viewer</div>
+      <div class="ml-auto flex items-center gap-3">
+        <div id="userInfo" class="text-sm text-slate-600"></div>
+        <div class="flex items-center gap-2">
+          <label class="text-sm text-slate-600">Speed</label>
+          <select id="rate" class="border rounded px-2 py-1 text-sm bg-white">
+            <option>0.75x</option><option selected>1.0x</option><option>1.25x</option>
+            <option>1.5x</option><option>1.75x</option><option>2.0x</option>
+          </select>
+        </div>
+        <button id="downloadJson" class="text-sm px-3 py-1.5 rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50 transition-colors">
+          📥 Download
+        </button>
+        <button id="refreshSessions" class="text-sm px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 transition-colors">
+          🔄 Refresh
+        </button>
+        <a href="/" class="text-sm px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 transition-colors">
+          🏠 Dashboard
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Authentication required message -->
+  <div id="authRequired" class="hidden max-w-7xl mx-auto px-4 py-8">
+    <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
+      <div class="text-4xl mb-4">🔐</div>
+      <h3 class="font-semibold text-yellow-800 mb-2">Authentication Required</h3>
+      <p class="text-yellow-700 mb-4">Please log in to view your transcriptions.</p>
+      <a href="index.html" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">
+        Go to Login
+      </a>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <main id="mainContent" class="max-w-7xl mx-auto px-4 py-4 grid grid-cols-12 gap-4">
+    <!-- Left: sessions / files -->
+    <aside class="col-span-12 lg:col-span-3">
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold text-lg">📅 Audio Sessions</h2>
+          <span id="sessionCount" class="text-xs text-slate-500"></span>
+        </div>
+        <div id="sessionList" class="thin-scrollbar max-h-[70vh] overflow-auto space-y-3">
+          <div class="loading text-center py-8 text-slate-500">
+            <div class="text-2xl mb-2">🔍</div>
+            <p>Loading your audio sessions...</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center: player + transcript -->
+    <section class="col-span-12 lg:col-span-6 flex flex-col gap-4">
+      <!-- Audio Player -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+        <div class="flex items-center gap-3 mb-3">
+          <button id="playPause" class="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-400 transition-colors font-medium" disabled>
+            ▶️ Play
+          </button>
+          <input id="seek" type="range" min="0" max="100" value="0" class="flex-1" disabled>
+          <div id="clock" class="font-mono text-sm w-24 text-right text-slate-600">0:00 / 0:00</div>
+        </div>
+        <audio id="player" class="w-full" preload="metadata" controls></audio>
+        <div class="mt-3 text-xs text-slate-500 bg-slate-50 rounded-lg p-3">
+          💡 <strong>Tip:</strong> Select a session from the left to load audio and transcript. Click any word in the transcript to jump to that moment in the audio.
+        </div>
+      </div>
+
+      <!-- Transcript -->
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex-1">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold text-lg">📄 Transcript</h3>
+          <div class="text-xs text-slate-500" id="stats"></div>
+        </div>
+        <div id="transcript" class="thin-scrollbar max-h-[55vh] overflow-auto">
+          <div class="text-center py-12 text-slate-400">
+            <div class="text-4xl mb-4">🎧</div>
+            <p class="text-lg mb-2">No transcript selected</p>
+            <p class="text-sm">Choose a session from the left to view its transcript</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: tools (search, speakers, info) -->
+    <aside class="col-span-12 lg:col-span-3">
+      <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-4">
+        <!-- Search -->
+        <div>
+          <label class="text-sm font-semibold flex items-center gap-2">
+            🔍 Search Transcript
+          </label>
+          <input id="search" type="text" placeholder="Find words or phrases..." class="mt-2 w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+          <div class="flex items-center gap-3 mt-2 text-sm">
+            <label class="flex items-center gap-1">
+              <input id="caseSensitive" type="checkbox" class="rounded" /> Case sensitive
+            </label>
+          </div>
+          <div id="searchResults" class="mt-2 text-xs text-slate-500"></div>
+        </div>
+
+        <!-- Session Info -->
+        <div id="sessionInfo" class="hidden">
+          <label class="text-sm font-semibold flex items-center gap-2">
+            ℹ️ Session Details
+          </label>
+          <div class="mt-2 space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-slate-600">Date:</span> 
+              <span id="sessionDate" class="font-medium"></span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-600">Duration:</span> 
+              <span id="sessionDuration" class="font-medium"></span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-600">Chunks:</span> 
+              <span id="sessionChunks" class="font-medium"></span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-600">Status:</span> 
+              <span id="sessionStatus" class="font-medium"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Processing Info -->
+        <div id="processingInfo" class="hidden">
+          <label class="text-sm font-semibold flex items-center gap-2">
+            ⚙️ Processing Details
+          </label>
+          <div class="mt-2 space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-slate-600">Confidence:</span> 
+              <span id="confidence" class="font-medium"></span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-600">Language:</span> 
+              <span id="language" class="font-medium"></span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-600">Words:</span> 
+              <span id="wordCount" class="font-medium"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Speakers -->
+        <div id="speakersSection" class="hidden">
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-semibold flex items-center gap-2">
+              👥 Speakers
+            </label>
+            <button id="clearSpeaker" class="text-xs text-blue-600 hover:text-blue-800">Clear filter</button>
+          </div>
+          <div id="speakerList" class="mt-2 flex flex-wrap gap-2"></div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div>
+          <label class="text-sm font-semibold flex items-center gap-2">
+            ⚡ Quick Actions
+          </label>
+          <div class="mt-2 space-y-2">
+            <button id="jumpToStart" class="w-full text-left px-3 py-2 text-sm bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors" disabled>
+              ⏮️ Jump to start
+            </button>
+            <button id="shareTimestamp" class="w-full text-left px-3 py-2 text-sm bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors" disabled>
+              🔗 Copy timestamp
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Footer -->
+  <footer class="max-w-7xl mx-auto px-4 pb-6 text-center text-xs text-slate-500">
+    Transcription Viewer - Your personal audio archive with intelligent search
+  </footer>
+
+  <script>
+    // Configuration - will be replaced by deployment script
+    const config = {
+        userPoolId: 'us-east-2_Mjk5creBj',
+        userPoolClientId: 'ddjkepnksfmpkrjuojilaau2b', 
+        identityPoolId: 'us-east-2:68194838-5526-4510-9673-af2c07e8ed44',
+        region: 'us-east-2',
+        apiUrl: 'https://d2vkipfwau0424.cloudfront.net/api/data',
+        s3ApiUrl: 'https://d2vkipfwau0424.cloudfront.net/api/s3/list',
+        appUrl: 'https://d2vkipfwau0424.cloudfront.net'
+    };
+
+    // Global state
+    let currentUser = null;
+    let currentSession = null;
+    let currentTranscript = null;
+    let audioPlayer = null;
+    let allSessions = [];
+    let searchMatches = [];
+    let isPlaying = false;
+
+    // DOM elements
+    const elements = {
+        authRequired: document.getElementById('authRequired'),
+        mainContent: document.getElementById('mainContent'),
+        userInfo: document.getElementById('userInfo'),
+        sessionList: document.getElementById('sessionList'),
+        sessionCount: document.getElementById('sessionCount'),
+        player: document.getElementById('player'),
+        playPause: document.getElementById('playPause'),
+        seek: document.getElementById('seek'),
+        clock: document.getElementById('clock'),
+        transcript: document.getElementById('transcript'),
+        stats: document.getElementById('stats'),
+        search: document.getElementById('search'),
+        searchResults: document.getElementById('searchResults'),
+        sessionInfo: document.getElementById('sessionInfo'),
+        sessionDate: document.getElementById('sessionDate'),
+        sessionDuration: document.getElementById('sessionDuration'),
+        sessionChunks: document.getElementById('sessionChunks'),
+        sessionStatus: document.getElementById('sessionStatus'),
+        processingInfo: document.getElementById('processingInfo'),
+        confidence: document.getElementById('confidence'),
+        language: document.getElementById('language'),
+        wordCount: document.getElementById('wordCount'),
+        speakersSection: document.getElementById('speakersSection'),
+        speakerList: document.getElementById('speakerList'),
+        rate: document.getElementById('rate'),
+        downloadJson: document.getElementById('downloadJson'),
+        refreshSessions: document.getElementById('refreshSessions'),
+        caseSensitive: document.getElementById('caseSensitive'),
+        clearSpeaker: document.getElementById('clearSpeaker'),
+        jumpToStart: document.getElementById('jumpToStart'),
+        shareTimestamp: document.getElementById('shareTimestamp')
+    };
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        setupEventListeners();
+        checkAuthentication();
+    });
+
+    function setupEventListeners() {
+        // Audio controls
+        elements.playPause.addEventListener('click', togglePlayPause);
+        elements.seek.addEventListener('input', seekAudio);
+        elements.rate.addEventListener('change', changePlaybackRate);
+
+        // Player events
+        elements.player.addEventListener('loadedmetadata', updateAudioUI);
+        elements.player.addEventListener('timeupdate', updateProgress);
+        elements.player.addEventListener('ended', () => {
+            elements.playPause.textContent = '▶️ Play';
+            isPlaying = false;
+        });
+
+        // Search
+        elements.search.addEventListener('input', debounce(performSearch, 300));
+        elements.caseSensitive.addEventListener('change', performSearch);
+
+        // Session management
+        elements.refreshSessions.addEventListener('click', loadSessions);
+
+        // Download & actions
+        elements.downloadJson.addEventListener('click', downloadCurrentTranscript);
+        elements.jumpToStart.addEventListener('click', () => jumpToTime(0));
+        elements.shareTimestamp.addEventListener('click', copyCurrentTimestamp);
+
+        // Speaker filtering
+        elements.clearSpeaker.addEventListener('click', clearSpeakerFilter);
+    }
+
+    async function checkAuthentication() {
+        try {
+            const idToken = localStorage.getItem('id_token');
+            if (!idToken) {
+                showAuthRequired();
+                return;
+            }
+
+            // Parse token to get user info
+            const payload = JSON.parse(atob(idToken.split('.')[1]));
+            
+            // Check if token is expired
+            const now = Math.floor(Date.now() / 1000);
+            if (payload.exp && payload.exp < now) {
+                localStorage.removeItem('id_token');
+                localStorage.removeItem('access_token');
+                showAuthRequired();
+                return;
+            }
+
+            currentUser = {
+                email: payload.email,
+                sub: payload.sub,
+                name: payload.name || payload.email
+            };
+
+            showMainContent();
+            await loadSessions();
+
+        } catch (error) {
+            console.error('Authentication check failed:', error);
+            showAuthRequired();
+        }
+    }
+
+    function showAuthRequired() {
+        elements.authRequired.classList.remove('hidden');
+        elements.mainContent.classList.add('hidden');
+    }
+
+    function showMainContent() {
+        elements.authRequired.classList.add('hidden');
+        elements.mainContent.classList.remove('hidden');
+        elements.userInfo.textContent = `👤 ${currentUser.name}`;
+    }
+
+    async function loadSessions() {
+        try {
+            elements.sessionList.innerHTML = `
+                <div class="loading text-center py-8 text-slate-500">
+                    <div class="text-2xl mb-2">🔍</div>
+                    <p>Discovering your audio sessions...</p>
+                </div>
+            `;
+            
+            const idToken = localStorage.getItem('id_token');
+            const response = await fetch(`${config.s3ApiUrl}`, {
+                headers: {
+                    'Authorization': `Bearer ${idToken}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to load sessions: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            
+            // Filter for audio sessions
+            const audioFiles = data.files
+                .filter(file => file.key.includes('/audio/sessions/') && file.key.endsWith('.webm'))
+                .map(file => parseSessionFromS3Key(file));
+
+            // Group by session ID
+            const sessionMap = new Map();
+            audioFiles.forEach(audioFile => {
+                const sessionId = audioFile.sessionId;
+                if (!sessionMap.has(sessionId)) {
+                    sessionMap.set(sessionId, {
+                        sessionId,
+                        date: audioFile.date,
+                        chunks: [],
+                        hasTranscript: false,
+                        totalSize: 0
+                    });
+                }
+                
+                const session = sessionMap.get(sessionId);
+                session.chunks.push(audioFile);
+                session.totalSize += audioFile.size;
+            });
+
+            // Check for transcripts
+            const transcriptFiles = data.files
+                .filter(file => file.key.includes('/transcripts/') && file.key.endsWith('.json'));
+            
+            transcriptFiles.forEach(transcriptFile => {
+                const sessionId = extractSessionIdFromTranscriptPath(transcriptFile.key);
+                if (sessionMap.has(sessionId)) {
+                    sessionMap.get(sessionId).hasTranscript = true;
+                }
+            });
+
+            allSessions = Array.from(sessionMap.values())
+                .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            displaySessions();
+
+        } catch (error) {
+            console.error('Failed to load sessions:', error);
+            elements.sessionList.innerHTML = `
+                <div class="text-center py-8 text-red-600">
+                    <div class="text-2xl mb-2">❌</div>
+                    <p class="mb-3">Failed to load sessions</p>
+                    <button onclick="loadSessions()" class="text-sm px-3 py-2 bg-red-100 hover:bg-red-200 rounded-lg transition-colors">
+                        🔄 Retry
+                    </button>
+                </div>
+            `;
+        }
+    }
+
+    function parseSessionFromS3Key(file) {
+        // Parse: users/{userId}/audio/sessions/{date}-{sessionId}/chunk-{num}.webm
+        const keyParts = file.key.split('/');
+        const sessionFolder = keyParts[keyParts.length - 2];
+        const fileName = keyParts[keyParts.length - 1];
+        
+        const chunkMatch = fileName.match(/chunk-(\d+)\.webm/);
+        const chunkNumber = chunkMatch ? parseInt(chunkMatch[1]) : 0;
+        
+        const dateMatch = sessionFolder.match(/^(\d{4}-\d{2}-\d{2})/);
+        const sessionDate = dateMatch ? dateMatch[1] : 'Unknown';
+        
+        return {
+            sessionId: sessionFolder,
+            date: sessionDate,
+            chunkNumber,
+            s3Key: file.key,
+            size: file.size,
+            lastModified: file.lastModified
+        };
+    }
+
+    function extractSessionIdFromTranscriptPath(transcriptPath) {
+        // Extract from: users/{userId}/transcripts/{sessionId}.json
+        const parts = transcriptPath.split('/');
+        const filename = parts[parts.length - 1];
+        return filename.replace('.json', '');
+    }
+
+    function displaySessions() {
+        if (allSessions.length === 0) {
+            elements.sessionList.innerHTML = `
+                <div class="text-center py-8 text-slate-400">
+                    <div class="text-3xl mb-3">🎤</div>
+                    <p class="mb-2">No audio sessions found</p>
+                    <p class="text-xs mb-4">Record some audio to see transcriptions here</p>
+                    <a href="audio.html" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
+                        🎙️ Start Recording
+                    </a>
+                </div>
+            `;
+            elements.sessionCount.textContent = '';
+            return;
+        }
+
+        elements.sessionCount.textContent = `${allSessions.length} session${allSessions.length !== 1 ? 's' : ''}`;
+
+        elements.sessionList.innerHTML = allSessions.map(session => {
+            const chunkCount = session.chunks.length;
+            const sizeStr = formatFileSize(session.totalSize);
+            const statusClass = session.hasTranscript ? 'completed' : 'processing';
+            const statusText = session.hasTranscript ? '✅ Transcribed' : '⏳ Processing';
+            const isActive = currentSession?.sessionId === session.sessionId;
+            
+            return `
+                <div class="session-item ${statusClass} ${isActive ? 'active' : ''} border rounded-xl p-3" 
+                     onclick="selectSession('${session.sessionId}')">
+                    <div class="flex items-start justify-between mb-2">
+                        <div class="font-semibold text-sm">📅 ${formatDate(session.date)}</div>
+                        <span class="status-badge status-${session.hasTranscript ? 'completed' : 'processing'}">
+                            ${statusText}
+                        </span>
+                    </div>
+                    <div class="text-xs text-slate-600 space-y-1">
+                        <div>🎵 ${chunkCount} chunk${chunkCount !== 1 ? 's' : ''} • ${sizeStr}</div>
+                        <div class="font-mono text-slate-500">
+                            ${session.sessionId.length > 35 ? session.sessionId.substring(0, 35) + '...' : session.sessionId}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function selectSession(sessionId) {
+        const session = allSessions.find(s => s.sessionId === sessionId);
+        if (!session) return;
+
+        currentSession = session;
+        displaySessions(); // Refresh to show active state
+
+        // Load first audio chunk
+        if (session.chunks.length > 0) {
+            const firstChunk = session.chunks.sort((a, b) => a.chunkNumber - b.chunkNumber)[0];
+            await loadAudioFromS3(firstChunk.s3Key);
+        }
+
+        // Load transcript if available
+        if (session.hasTranscript) {
+            await loadTranscript(sessionId);
+        } else {
+            showProcessingMessage();
+        }
+        
+        // Update session info
+        updateSessionInfo(session);
+    }
+
+    async function loadAudioFromS3(s3Key) {
+        try {
+            const idToken = localStorage.getItem('id_token');
+            const downloadUrl = `${config.s3ApiUrl.replace('/list', `/download/${encodeURIComponent(s3Key)}`)}`;
+            
+            const response = await fetch(downloadUrl, {
+                headers: {
+                    'Authorization': `Bearer ${idToken}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to get audio download URL: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            elements.player.src = data.downloadUrl;
+            elements.playPause.disabled = false;
+            elements.seek.disabled = false;
+            elements.jumpToStart.disabled = false;
+            elements.shareTimestamp.disabled = false;
+
+            console.log('🎵 Audio loaded:', s3Key);
+
+        } catch (error) {
+            console.error('Failed to load audio:', error);
+            elements.player.src = '';
+            elements.playPause.disabled = true;
+            elements.seek.disabled = true;
+            elements.jumpToStart.disabled = true;
+            elements.shareTimestamp.disabled = true;
+        }
+    }
+
+    async function loadTranscript(sessionId) {
+        try {
+            // Look for transcript: users/{userId}/transcripts/{sessionId}.json
+            const transcriptKey = `users/${currentUser.sub}/transcripts/${sessionId}.json`;
+            
+            const idToken = localStorage.getItem('id_token');
+            const downloadUrl = `${config.s3ApiUrl.replace('/list', `/download/${encodeURIComponent(transcriptKey)}`)}`;
+            
+            const response = await fetch(downloadUrl, {
+                headers: {
+                    'Authorization': `Bearer ${idToken}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const transcriptResponse = await fetch(data.downloadUrl);
+                currentTranscript = await transcriptResponse.json();
+                displayTranscript();
+                elements.downloadJson.disabled = false;
+                
+                console.log('📄 Transcript loaded:', transcriptKey);
+            } else {
+                showProcessingMessage();
+            }
+
+        } catch (error) {
+            console.error('Failed to load transcript:', error);
+            showProcessingMessage();
+        }
+    }
+
+    function showProcessingMessage() {
+        currentTranscript = null;
+        elements.downloadJson.disabled = true;
+        elements.transcript.innerHTML = `
+            <div class="text-center py-12 text-slate-400">
+                <div class="text-4xl mb-4">⏳</div>
+                <p class="text-lg mb-2">Transcript processing...</p>
+                <p class="text-sm mb-4">Your audio is being transcribed in the background</p>
+                <button onclick="loadSessions()" class="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg transition-colors text-sm">
+                    🔄 Check again
+                </button>
+            </div>
+        `;
+        hideInfoSections();
+    }
+
+    function displayTranscript() {
+        if (!currentTranscript) return;
+
+        let html = '';
+        
+        if (currentTranscript.paragraphs && currentTranscript.paragraphs.length > 0) {
+            html = currentTranscript.paragraphs.map((para, paraIndex) => {
+                const speaker = para.speaker || 'Speaker';
+                const timestamp = para.start ? formatTime(para.start) : '0:00';
+                
+                let wordsHtml;
+                if (para.words && para.words.length > 0) {
+                    wordsHtml = para.words.map((word, wordIndex) => 
+                        `<span class="word" data-time="${word.t || 0}" data-para="${paraIndex}" data-word="${wordIndex}" title="Jump to ${formatTime(word.t || 0)}">${word.w || word.text || ''}</span>`
+                    ).join(' ');
+                } else {
+                    wordsHtml = para.text || para.content || 'No text available';
+                }
+
+                return `
+                    <div class="para mb-4 p-3 rounded-lg border-l-4 border-slate-200 hover:border-blue-300 transition-colors" data-para="${paraIndex}">
+                        <div class="flex items-center gap-2 text-xs text-slate-500 mb-2">
+                            <span class="font-medium bg-slate-100 px-2 py-1 rounded-full">${speaker}</span>
+                            <span class="font-mono cursor-pointer hover:text-blue-600" onclick="jumpToTime(${para.start || 0})" title="Jump to this time">
+                                📍 ${timestamp}
+                            </span>
+                        </div>
+                        <div class="text-sm leading-relaxed text-slate-700">${wordsHtml}</div>
+                    </div>
+                `;
+            }).join('');
+        } else if (currentTranscript.text) {
+            // Handle simple text format
+            html = `
+                <div class="para p-4 rounded-lg border border-slate-200">
+                    <div class="text-sm leading-relaxed text-slate-700">${currentTranscript.text}</div>
+                </div>
+            `;
+        } else {
+            html = `
+                <div class="text-center py-8 text-slate-400">
+                    <div class="text-3xl mb-3">📄</div>
+                    <p>Transcript format not recognized</p>
+                </div>
+            `;
+        }
+
+        elements.transcript.innerHTML = html;
+
+        // Add click listeners to words
+        elements.transcript.querySelectorAll('.word[data-time]').forEach(word => {
+            word.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const time = parseFloat(word.dataset.time);
+                if (!isNaN(time) && elements.player.src) {
+                    jumpToTime(time);
+                }
+            });
+        });
+
+        updateTranscriptStats();
+        updateProcessingInfo();
+        showInfoSections();
+    }
+
+    function updateSessionInfo(session) {
+        elements.sessionInfo.classList.remove('hidden');
+        elements.sessionDate.textContent = formatDate(session.date);
+        elements.sessionDuration.textContent = elements.player.duration ? formatTime(elements.player.duration) : 'Unknown';
+        elements.sessionChunks.textContent = `${session.chunks.length} chunk${session.chunks.length !== 1 ? 's' : ''}`;
+        
+        const statusText = session.hasTranscript ? '✅ Completed' : '⏳ Processing';
+        elements.sessionStatus.textContent = statusText;
+        elements.sessionStatus.className = `font-medium ${session.hasTranscript ? 'text-green-600' : 'text-yellow-600'}`;
+    }
+
+    function updateTranscriptStats() {
+        if (!currentTranscript) return;
+        
+        let wordCount = 0;
+        let duration = elements.player.duration || 0;
+
+        if (currentTranscript.metadata) {
+            wordCount = currentTranscript.metadata.wordCount || 0;
+            duration = currentTranscript.metadata.duration || duration;
+        } else if (currentTranscript.paragraphs) {
+            wordCount = currentTranscript.paragraphs.reduce((sum, p) => 
+                sum + ((p.words && p.words.length) || (p.text ? p.text.split(' ').length : 0)), 0
+            );
+        }
+        
+        elements.stats.textContent = `📊 ${wordCount} words • ${formatTime(duration)}`;
+    }
+
+    function updateProcessingInfo() {
+        if (!currentTranscript?.metadata) {
+            elements.processingInfo.classList.add('hidden');
+            return;
+        }
+
+        elements.processingInfo.classList.remove('hidden');
+        
+        const confidence = currentTranscript.metadata.confidence;
+        elements.confidence.textContent = confidence ? 
+            `${(confidence * 100).toFixed(1)}%` : 'Unknown';
+        elements.confidence.className = `font-medium ${
+            confidence > 0.8 ? 'text-green-600' : confidence > 0.6 ? 'text-yellow-600' : 'text-red-600'
+        }`;
+        
+        elements.language.textContent = currentTranscript.metadata.language || 'Unknown';
+        elements.wordCount.textContent = currentTranscript.metadata.wordCount || 'Unknown';
+    }
+
+    function showInfoSections() {
+        elements.sessionInfo.classList.remove('hidden');
+        if (currentTranscript?.metadata) {
+            elements.processingInfo.classList.remove('hidden');
+        }
+    }
+
+    function hideInfoSections() {
+        elements.processingInfo.classList.add('hidden');
+        elements.speakersSection.classList.add('hidden');
+    }
+
+    // Audio player functions
+    function togglePlayPause() {
+        if (!elements.player.src) return;
+        
+        if (elements.player.paused) {
+            elements.player.play();
+            elements.playPause.textContent = '⏸️ Pause';
+            isPlaying = true;
+        } else {
+            elements.player.pause();
+            elements.playPause.textContent = '▶️ Play';
+            isPlaying = false;
+        }
+    }
+
+    function seekAudio() {
+        if (elements.player.duration) {
+            const time = (elements.seek.value / 100) * elements.player.duration;
+            elements.player.currentTime = time;
+        }
+    }
+
+    function changePlaybackRate() {
+        const rate = parseFloat(elements.rate.value.replace('x', ''));
+        elements.player.playbackRate = rate;
+    }
+
+    function jumpToTime(seconds) {
+        if (elements.player.src && !isNaN(seconds)) {
+            elements.player.currentTime = seconds;
+            if (elements.player.paused) {
+                elements.player.play();
+                elements.playPause.textContent = '⏸️ Pause';
+                isPlaying = true;
+            }
+        }
+    }
+
+    function updateAudioUI() {
+        const duration = elements.player.duration || 0;
+        elements.clock.textContent = `0:00 / ${formatTime(duration)}`;
+        
+        // Update session duration now that we have the audio duration
+        if (currentSession) {
+            elements.sessionDuration.textContent = formatTime(duration);
+        }
+    }
+
+    function updateProgress() {
+        if (elements.player.duration) {
+            const progress = (elements.player.currentTime / elements.player.duration) * 100;
+            elements.seek.value = progress;
+            
+            const current = formatTime(elements.player.currentTime);
+            const total = formatTime(elements.player.duration);
+            elements.clock.textContent = `${current} / ${total}`;
+
+            // Highlight current word
+            highlightCurrentWord(elements.player.currentTime);
+        }
+    }
+
+    function highlightCurrentWord(currentTime) {
+        // Clear previous highlights
+        elements.transcript.querySelectorAll('.word.active').forEach(word => {
+            word.classList.remove('active');
+        });
+
+        // Find and highlight current word
+        let closestWord = null;
+        let closestDiff = Infinity;
+
+        elements.transcript.querySelectorAll('.word[data-time]').forEach(word => {
+            const wordTime = parseFloat(word.dataset.time);
+            const timeDiff = Math.abs(currentTime - wordTime);
+            
+            if (wordTime <= currentTime + 0.8 && timeDiff < closestDiff) {
+                closestDiff = timeDiff;
+                closestWord = word;
+            }
+        });
+
+        if (closestWord) {
+            closestWord.classList.add('active');
+            
+            // Scroll into view if needed
+            const transcriptRect = elements.transcript.getBoundingClientRect();
+            const wordRect = closestWord.getBoundingClientRect();
+            
+            if (wordRect.top < transcriptRect.top || wordRect.bottom > transcriptRect.bottom) {
+                closestWord.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    }
+
+    // Search functionality
+    function performSearch() {
+        const query = elements.search.value.trim();
+        if (!query) {
+            clearSearch();
+            return;
+        }
+
+        const caseSensitive = elements.caseSensitive.checked;
+        const searchText = caseSensitive ? query : query.toLowerCase();
+        
+        // Clear previous matches
+        elements.transcript.querySelectorAll('.match').forEach(el => {
+            el.classList.remove('match');
+        });
+
+        let matchCount = 0;
+        elements.transcript.querySelectorAll('.word, .para').forEach(element => {
+            const elementText = caseSensitive ? element.textContent : element.textContent.toLowerCase();
+            if (elementText.includes(searchText)) {
+                element.classList.add('match');
+                matchCount++;
+            }
+        });
+
+        elements.searchResults.textContent = matchCount > 0 ? 
+            `✅ ${matchCount} match${matchCount !== 1 ? 'es' : ''} found` : '❌ No matches found';
+        elements.searchResults.className = `mt-2 text-xs ${matchCount > 0 ? 'text-green-600' : 'text-red-600'}`;
+    }
+
+    function clearSearch() {
+        elements.transcript.querySelectorAll('.match').forEach(el => {
+            el.classList.remove('match');
+        });
+        elements.searchResults.textContent = '';
+    }
+
+    function clearSpeakerFilter() {
+        // Re-display transcript without filter
+        displayTranscript();
+    }
+
+    // Action functions
+    function downloadCurrentTranscript() {
+        if (!currentTranscript || !currentSession) {
+            alert('❌ No transcript available to download');
+            return;
+        }
+
+        const dataStr = JSON.stringify(currentTranscript, null, 2);
+        const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+        
+        const timestamp = new Date().toISOString().split('T')[0];
+        const exportFileDefaultName = `transcript-${currentSession.date}-${timestamp}.json`;
+        
+        const linkElement = document.createElement('a');
+        linkElement.setAttribute('href', dataUri);
+        linkElement.setAttribute('download', exportFileDefaultName);
+        linkElement.click();
+
+        console.log('📥 Downloaded transcript:', exportFileDefaultName);
+    }
+
+    function copyCurrentTimestamp() {
+        if (!elements.player.src) return;
+        
+        const currentTime = elements.player.currentTime;
+        const timestamp = formatTime(currentTime);
+        const url = `${window.location.href}#t=${Math.floor(currentTime)}`;
+        
+        navigator.clipboard.writeText(url).then(() => {
+            // Temporarily change button text
+            const originalText = elements.shareTimestamp.textContent;
+            elements.shareTimestamp.textContent = '✅ Copied!';
+            setTimeout(() => {
+                elements.shareTimestamp.textContent = originalText;
+            }, 2000);
+        }).catch(() => {
+            // Fallback for browsers without clipboard API
+            prompt('📋 Copy this timestamp URL:', url);
+        });
+    }
+
+    // Utility functions
+    function formatTime(seconds) {
+        if (isNaN(seconds) || seconds < 0) return '0:00';
+        
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const remainingSeconds = Math.floor(seconds % 60);
+        
+        if (hours > 0) {
+            return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
+        return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+
+    function formatDate(dateStr) {
+        try {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short', 
+                day: 'numeric'
+            });
+        } catch {
+            return dateStr;
+        }
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    // Handle URL fragments for timestamp jumping
+    window.addEventListener('load', () => {
+        const hash = window.location.hash;
+        const timeMatch = hash.match(/#t=(\d+)/);
+        if (timeMatch) {
+            const seconds = parseInt(timeMatch[1]);
+            setTimeout(() => jumpToTime(seconds), 1000); // Wait for audio to load
+        }
+    });
+  </script>
+</body>
+</html>
