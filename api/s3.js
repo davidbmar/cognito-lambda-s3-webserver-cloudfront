@@ -43,22 +43,44 @@ module.exports.listObjects = async (event) => {
     
     console.log(`Listing S3 objects in bucket: ${bucketName}, prefix: ${prefix}, onlyNames: ${onlyNames}`);
 
-    // List objects in S3 bucket
-    const s3Params = {
-      Bucket: bucketName,
-      Prefix: prefix,
-      MaxKeys: 100 // Limit results for now
-    };
-
-    const s3Response = await s3.listObjectsV2(s3Params).promise();
+    // List objects in S3 bucket with pagination support
+    let allObjects = [];
+    let continuationToken = null;
+    let totalFetched = 0;
+    const maxTotal = 2000; // Safety limit
     
-    console.log(`Found ${s3Response.Contents?.length || 0} objects`);
+    do {
+      const s3Params = {
+        Bucket: bucketName,
+        Prefix: prefix,
+        MaxKeys: 1000,
+        ...(continuationToken && { ContinuationToken: continuationToken })
+      };
+
+      const s3Response = await s3.listObjectsV2(s3Params).promise();
+      
+      if (s3Response.Contents) {
+        allObjects = allObjects.concat(s3Response.Contents);
+        totalFetched += s3Response.Contents.length;
+      }
+      
+      continuationToken = s3Response.NextContinuationToken;
+      
+      // Safety break to prevent infinite loops
+      if (totalFetched >= maxTotal) {
+        console.log(`Reached maximum object limit of ${maxTotal}, truncating results`);
+        break;
+      }
+      
+    } while (continuationToken);
+    
+    console.log(`Found ${allObjects.length} objects total`);
 
     // Process the results based on the onlyNames flag
     let files;
     if (onlyNames) {
       // Return just filenames, removing the user prefix for cleaner display
-      files = (s3Response.Contents || []).map(obj => {
+      files = allObjects.map(obj => {
         if (userScope && obj.Key.startsWith(`users/${userId}/`)) {
           return obj.Key.replace(`users/${userId}/`, '');
         }
@@ -66,7 +88,7 @@ module.exports.listObjects = async (event) => {
       });
     } else {
       // Return full metadata with clean display names
-      files = (s3Response.Contents || []).map(obj => {
+      files = allObjects.map(obj => {
         let displayKey = obj.Key;
         if (userScope && obj.Key.startsWith(`users/${userId}/`)) {
           displayKey = obj.Key.replace(`users/${userId}/`, '');
