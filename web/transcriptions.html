@@ -477,8 +477,9 @@
             });
 
             // Check for transcripts - both session-level and chunk transcripts
+            // Looking for files like: users/{userId}/transcripts/{sessionId}.json or users/{userId}/transcripts/{sessionId}-chunk-{n}.json
             const transcriptFiles = data.files
-                .filter(file => file.key.includes('/transcripts/') && file.key.endsWith('.json'));
+                .filter(file => file.key.includes('transcripts/') && file.key.endsWith('.json'));
             
             // Process each session to determine transcript status
             sessionMap.forEach((session, sessionId) => {
