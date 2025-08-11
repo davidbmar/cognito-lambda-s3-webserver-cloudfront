@@ -67,6 +67,7 @@
     }
     .status-processing { background: #fef3c7; color: #92400e; }
     .status-completed { background: #d1fae5; color: #065f46; }
+    .status-partial { background: #dbeafe; color: #1e40af; animation: pulse 2s infinite; }
     
     /* Current chunk highlighting */
     .para.current-chunk {
@@ -301,6 +302,7 @@
     let searchMatches = [];
     let isPlaying = false;
     let currentChunkIndex = 0;
+    let autoRefreshInterval = null;
 
     // DOM elements
     const elements = {
@@ -474,14 +476,30 @@
                 session.totalSize += audioFile.size;
             });
 
-            // Check for transcripts
+            // Check for transcripts - both session-level and chunk transcripts
             const transcriptFiles = data.files
                 .filter(file => file.key.includes('/transcripts/') && file.key.endsWith('.json'));
             
-            transcriptFiles.forEach(transcriptFile => {
-                const sessionId = extractSessionIdFromTranscriptPath(transcriptFile.key);
-                if (sessionMap.has(sessionId)) {
-                    sessionMap.get(sessionId).hasTranscript = true;
+            // Process each session to determine transcript status
+            sessionMap.forEach((session, sessionId) => {
+                // Check for complete session transcript
+                const hasSessionTranscript = transcriptFiles.some(f => 
+                    f.key.endsWith(`${sessionId}.json`) && !f.key.includes('-chunk-'));
+                
+                if (hasSessionTranscript) {
+                    session.hasTranscript = true;
+                    session.transcriptType = 'complete';
+                } else {
+                    // Check for partial chunk transcripts
+                    const chunkTranscripts = transcriptFiles.filter(f => 
+                        f.key.includes(sessionId) && f.key.includes('-chunk-'));
+                    
+                    if (chunkTranscripts.length > 0) {
+                        session.hasTranscript = true;
+                        session.transcriptType = 'partial';
+                        session.chunkTranscriptCount = chunkTranscripts.length;
+                        session.chunkTranscripts = chunkTranscripts.map(f => f.key).sort();
+                    }
                 }
             });
 
@@ -554,8 +572,21 @@
         elements.sessionList.innerHTML = allSessions.map(session => {
             const chunkCount = session.chunks.length;
             const sizeStr = formatFileSize(session.totalSize);
-            const statusClass = session.hasTranscript ? 'completed' : 'processing';
-            const statusText = session.hasTranscript ? '✅ Transcribed' : '⏳ Processing';
+            
+            // Determine status based on transcript type
+            let statusClass, statusText;
+            if (session.transcriptType === 'complete') {
+                statusClass = 'completed';
+                statusText = '✅ Complete';
+            } else if (session.transcriptType === 'partial') {
+                statusClass = 'partial';
+                const transcribedChunks = session.chunkTranscriptCount || 0;
+                statusText = `📝 Partial (${transcribedChunks}/${chunkCount})`;
+            } else {
+                statusClass = 'processing';
+                statusText = '⏳ Processing';
+            }
+            
             const isActive = currentSession?.sessionId === session.sessionId;
             
             return `
@@ -563,12 +594,14 @@
                      onclick="selectSession('${session.sessionId}')">
                     <div class="flex items-start justify-between mb-2">
                         <div class="font-semibold text-sm">📅 ${formatDate(session.date)}</div>
-                        <span class="status-badge status-${session.hasTranscript ? 'completed' : 'processing'}">
+                        <span class="status-badge status-${statusClass}">
                             ${statusText}
                         </span>
                     </div>
                     <div class="text-xs text-slate-600 space-y-1">
                         <div>🎵 ${chunkCount} chunk${chunkCount !== 1 ? 's' : ''} • ${sizeStr}</div>
+                        ${session.transcriptType === 'partial' ? 
+                            `<div class="text-blue-600">🔄 Live transcription in progress...</div>` : ''}
                         <div class="font-mono text-slate-500">
                             ${session.sessionId.length > 35 ? session.sessionId.substring(0, 35) + '...' : session.sessionId}
                         </div>
@@ -581,6 +614,12 @@
     async function selectSession(sessionId) {
         const session = allSessions.find(s => s.sessionId === sessionId);
         if (!session) return;
+
+        // Clear any existing auto-refresh
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+        }
 
         currentSession = session;
         currentChunkIndex = 0;
@@ -597,9 +636,33 @@
         // Update chunk navigation buttons
         updateChunkNavigation();
 
-        // Load transcript if available
-        if (session.hasTranscript) {
-            await loadTranscript(sessionId);
+        // Load transcript based on type
+        if (session.transcriptType === 'complete') {
+            await loadTranscript(sessionId, 'complete');
+        } else if (session.transcriptType === 'partial') {
+            await loadTranscript(sessionId, 'partial');
+            
+            // Set up auto-refresh for partial transcripts (every 10 seconds)
+            autoRefreshInterval = setInterval(async () => {
+                console.log('🔄 Auto-refreshing partial transcript...');
+                await loadSessions();
+                const updatedSession = allSessions.find(s => s.sessionId === sessionId);
+                if (updatedSession) {
+                    currentSession = updatedSession;
+                    if (updatedSession.transcriptType === 'complete') {
+                        // Session is now complete, stop auto-refresh
+                        clearInterval(autoRefreshInterval);
+                        autoRefreshInterval = null;
+                        await loadTranscript(sessionId, 'complete');
+                        displaySessions();
+                        updateSessionInfo(updatedSession);
+                    } else if (updatedSession.transcriptType === 'partial') {
+                        // Still partial, reload chunks
+                        await loadTranscript(sessionId, 'partial');
+                        updateSessionInfo(updatedSession);
+                    }
+                }
+            }, 10000); // Refresh every 10 seconds
         } else {
             showProcessingMessage();
         }
@@ -688,36 +751,119 @@
         elements.chunkInfo.textContent = `Chunk ${currentChunk} of ${totalChunks}`;
     }
 
-    async function loadTranscript(sessionId) {
+    async function loadTranscript(sessionId, type = 'complete') {
         try {
-            // Look for transcript: users/{userId}/transcripts/{sessionId}.json
-            const transcriptKey = `users/${currentUser.sub}/transcripts/${sessionId}.json`;
-            
             const idToken = localStorage.getItem('id_token');
-            const downloadUrl = `${config.s3ApiUrl.replace('/list', `/download/${encodeURIComponent(transcriptKey)}`)}`;
             
-            const response = await fetch(downloadUrl, {
-                headers: {
-                    'Authorization': `Bearer ${idToken}`
-                }
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                const transcriptResponse = await fetch(data.downloadUrl);
-                currentTranscript = await transcriptResponse.json();
-                displayTranscript();
-                elements.downloadJson.disabled = false;
+            if (type === 'complete') {
+                // Load complete session transcript
+                const transcriptKey = `users/${currentUser.sub}/transcripts/${sessionId}.json`;
+                const downloadUrl = `${config.s3ApiUrl.replace('/list', `/download/${encodeURIComponent(transcriptKey)}`)}`;
                 
-                console.log('📄 Transcript loaded:', transcriptKey);
-            } else {
-                showProcessingMessage();
+                const response = await fetch(downloadUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${idToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const transcriptResponse = await fetch(data.downloadUrl);
+                    const rawTranscript = await transcriptResponse.json();
+                    currentTranscript = convertTranscriptFormat(rawTranscript);
+                    displayTranscript();
+                    elements.downloadJson.disabled = false;
+                    
+                    // Show complete session status in stats
+                    setTimeout(() => {
+                        const originalStats = elements.stats.textContent;
+                        elements.stats.innerHTML = `✅ Complete Session • ${originalStats}`;
+                    }, 100);
+                    
+                    console.log('📄 Complete transcript loaded:', transcriptKey);
+                } else {
+                    showProcessingMessage();
+                }
+            } else if (type === 'partial') {
+                // Load and combine chunk transcripts
+                const session = currentSession;
+                if (!session || !session.chunkTranscripts) {
+                    showProcessingMessage();
+                    return;
+                }
+                
+                // Load all chunk transcripts
+                const chunkData = [];
+                for (const chunkKey of session.chunkTranscripts) {
+                    try {
+                        const downloadUrl = `${config.s3ApiUrl.replace('/list', `/download/${encodeURIComponent(chunkKey)}`)}`;
+                        const response = await fetch(downloadUrl, {
+                            headers: {
+                                'Authorization': `Bearer ${idToken}`
+                            }
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            const transcriptResponse = await fetch(data.downloadUrl);
+                            const chunk = await transcriptResponse.json();
+                            chunkData.push(chunk);
+                        }
+                    } catch (err) {
+                        console.warn('Failed to load chunk:', chunkKey, err);
+                    }
+                }
+                
+                // Combine chunks into a single transcript
+                if (chunkData.length > 0) {
+                    const combinedTranscript = combineChunkTranscripts(chunkData);
+                    currentTranscript = convertTranscriptFormat(combinedTranscript);
+                    displayTranscript();
+                    elements.downloadJson.disabled = false;
+                    
+                    // Show partial transcript status in stats
+                    const originalStats = elements.stats.textContent;
+                    elements.stats.innerHTML = `🔄 Partial (${chunkData.length} chunks) • ${originalStats}`;
+                    
+                    console.log(`📄 Partial transcript loaded: ${chunkData.length} chunks`);
+                } else {
+                    showProcessingMessage();
+                }
             }
 
         } catch (error) {
             console.error('Failed to load transcript:', error);
             showProcessingMessage();
         }
+    }
+
+    function combineChunkTranscripts(chunks) {
+        // Combine multiple chunk transcripts into a single transcript
+        const combined = {
+            text: chunks.map(c => c.text || '').join(' '),
+            chunks: []
+        };
+        
+        let timeOffset = 0;
+        chunks.forEach((chunk, index) => {
+            if (chunk.chunks && Array.isArray(chunk.chunks)) {
+                // Adjust timestamps for each chunk
+                const adjustedChunks = chunk.chunks.map(c => ({
+                    ...c,
+                    timestamp: c.timestamp ? [
+                        c.timestamp[0] + timeOffset,
+                        c.timestamp[1] + timeOffset
+                    ] : [timeOffset, timeOffset + 1]
+                }));
+                combined.chunks.push(...adjustedChunks);
+                
+                // Update time offset for next chunk (assume 30 seconds per chunk)
+                const maxTime = Math.max(...chunk.chunks.map(c => c.timestamp ? c.timestamp[1] : 0));
+                timeOffset += maxTime || 30;
+            }
+        });
+        
+        return combined;
     }
 
     function showProcessingMessage() {
