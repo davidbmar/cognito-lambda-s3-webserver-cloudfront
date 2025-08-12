@@ -637,29 +637,36 @@
         // Update chunk navigation buttons
         updateChunkNavigation();
 
-        // Load transcript based on type
+        // Determine viewing mode and load accordingly
         if (session.transcriptType === 'complete') {
+            // Use session mode for complete transcripts
             await loadTranscript(sessionId, 'complete');
-        } else if (session.transcriptType === 'partial') {
-            await loadTranscript(sessionId, 'partial');
+        } else if (session.transcriptType === 'partial' && session.chunkTranscripts && session.chunkTranscripts.length > 0) {
+            // Use chunk mode for partial transcripts
+            await loadChunkMode(session);
             
-            // Set up auto-refresh for partial transcripts (every 10 seconds)
+            // Set up auto-refresh for new chunks (every 10 seconds)
             autoRefreshInterval = setInterval(async () => {
-                console.log('🔄 Auto-refreshing partial transcript...');
+                console.log('🔄 Auto-refreshing chunk transcripts...');
                 await loadSessions();
                 const updatedSession = allSessions.find(s => s.sessionId === sessionId);
                 if (updatedSession) {
                     currentSession = updatedSession;
                     if (updatedSession.transcriptType === 'complete') {
-                        // Session is now complete, stop auto-refresh
+                        // Session is now complete, switch to session mode
                         clearInterval(autoRefreshInterval);
                         autoRefreshInterval = null;
                         await loadTranscript(sessionId, 'complete');
+                        showNotification("✨ Complete session transcript now available!");
                         displaySessions();
                         updateSessionInfo(updatedSession);
-                    } else if (updatedSession.transcriptType === 'partial') {
-                        // Still partial, reload chunks
-                        await loadTranscript(sessionId, 'partial');
+                    } else if (updatedSession.chunkTranscripts.length > currentSession.chunkTranscripts.length) {
+                        // New chunks available, refresh current chunk if at end
+                        currentSession = updatedSession;
+                        if (currentChunkIndex >= currentSession.chunkTranscripts.length - 1) {
+                            await loadChunkByTranscriptIndex(currentSession.chunkTranscripts.length - 1);
+                        }
+                        updateChunkNavigation();
                         updateSessionInfo(updatedSession);
                     }
                 }
@@ -865,6 +872,260 @@
         });
         
         return combined;
+    }
+
+    function convertTranscriptFormat(transcript) {
+        // Convert the transcript to the format expected by displayTranscript
+        if (!transcript) return null;
+        
+        // If it already has paragraphs format, return as-is
+        if (transcript.paragraphs) {
+            return transcript;
+        }
+        
+        // Convert chunks format to paragraphs format
+        const converted = {
+            text: transcript.text || '',
+            paragraphs: []
+        };
+        
+        if (transcript.chunks && Array.isArray(transcript.chunks)) {
+            // Convert each chunk to a paragraph
+            transcript.chunks.forEach((chunk, index) => {
+                converted.paragraphs.push({
+                    speaker: 'Speaker',
+                    start: chunk.timestamp ? chunk.timestamp[0] : index * 5,
+                    end: chunk.timestamp ? chunk.timestamp[1] : (index + 1) * 5,
+                    text: chunk.text || '',
+                    words: chunk.text ? chunk.text.split(' ').map((word, wi) => ({
+                        w: word,
+                        t: chunk.timestamp ? 
+                            chunk.timestamp[0] + (wi * (chunk.timestamp[1] - chunk.timestamp[0]) / chunk.text.split(' ').length) : 
+                            index * 5 + wi * 0.3
+                    })) : []
+                });
+            });
+        } else if (transcript.text) {
+            // If only text is available, create a single paragraph
+            converted.paragraphs.push({
+                speaker: 'Speaker',
+                start: 0,
+                end: 60,
+                text: transcript.text,
+                words: transcript.text.split(' ').map((word, index) => ({
+                    w: word,
+                    t: index * 0.3
+                }))
+            });
+        }
+        
+        // Add metadata if available
+        if (transcript.metadata) {
+            converted.metadata = transcript.metadata;
+        }
+        
+        return converted;
+    }
+
+    // Chunk Mode Functions
+    async function loadChunkMode(session) {
+        console.log('📋 Loading chunk mode for session:', session.sessionId);
+        
+        // Start with first available chunk
+        currentChunkIndex = 0;
+        currentSession = session;
+        
+        // Load first chunk
+        if (session.chunkTranscripts && session.chunkTranscripts.length > 0) {
+            await loadChunkByTranscriptIndex(0);
+        } else {
+            showChunkProcessingMessage();
+        }
+        
+        updateChunkNavigation();
+        showChunkModeInterface();
+    }
+    
+    async function loadChunkByTranscriptIndex(transcriptIndex) {
+        if (!currentSession || !currentSession.chunkTranscripts || transcriptIndex < 0 || transcriptIndex >= currentSession.chunkTranscripts.length) {
+            console.error('Invalid chunk transcript index:', transcriptIndex);
+            return;
+        }
+        
+        try {
+            currentChunkIndex = transcriptIndex;
+            
+            // Load chunk audio
+            const audioChunk = currentSession.chunks[transcriptIndex];
+            if (audioChunk) {
+                await loadAudioFromS3(audioChunk.s3Key);
+            }
+            
+            // Load chunk transcript
+            const transcriptKey = currentSession.chunkTranscripts[transcriptIndex];
+            const idToken = localStorage.getItem('id_token');
+            const downloadUrl = `${config.s3ApiUrl.replace('/list', `/download/${encodeURIComponent(transcriptKey)}`)}`;
+            
+            const response = await fetch(downloadUrl, {
+                headers: {
+                    'Authorization': `Bearer ${idToken}`
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                const transcriptResponse = await fetch(data.downloadUrl);
+                const chunkTranscript = await transcriptResponse.json();
+                
+                // Display this chunk's transcript
+                displayChunkTranscript(chunkTranscript, transcriptIndex);
+                updateChunkNavigation();
+                
+                console.log(`📄 Loaded chunk ${transcriptIndex + 1}/${currentSession.chunkTranscripts.length}`);
+            } else {
+                showChunkProcessingMessage();
+            }
+            
+        } catch (error) {
+            console.error('Error loading chunk:', error);
+            showChunkProcessingMessage();
+        }
+    }
+    
+    function displayChunkTranscript(chunkTranscript, chunkIndex) {
+        if (!chunkTranscript) return;
+        
+        // Get chunk duration from transcript
+        const chunkDuration = getChunkDuration(chunkTranscript);
+        
+        // Convert chunk transcript to display format
+        const convertedTranscript = convertTranscriptFormat(chunkTranscript);
+        
+        if (convertedTranscript && convertedTranscript.paragraphs) {
+            let html = convertedTranscript.paragraphs.map((para, paraIndex) => {
+                const speaker = para.speaker || 'Speaker';
+                const timestamp = para.start ? formatTime(para.start) : '0:00';
+                
+                let wordsHtml;
+                if (para.words && para.words.length > 0) {
+                    wordsHtml = para.words.map((word, wordIndex) => 
+                        `<span class="word" data-time="${word.t || 0}" data-para="${paraIndex}" data-word="${wordIndex}" title="Jump to ${formatTime(word.t || 0)}">${word.w || word.text || ''}</span>`
+                    ).join(' ');
+                } else {
+                    wordsHtml = para.text || para.content || 'No text available';
+                }
+
+                return `
+                    <div class="para mb-4 p-3 rounded-lg border-l-4 border-slate-200 hover:border-blue-300 transition-colors" data-para="${paraIndex}">
+                        <div class="flex items-center gap-2 text-xs text-slate-500 mb-2">
+                            <span class="font-medium bg-slate-100 px-2 py-1 rounded-full">${speaker}</span>
+                            <span class="font-mono cursor-pointer hover:text-blue-600" onclick="jumpToTime(${para.start || 0})" title="Jump to this time">
+                                📍 ${timestamp}
+                            </span>
+                            <span class="bg-blue-100 px-2 py-1 rounded-full text-blue-700">
+                                Chunk ${chunkIndex + 1}
+                            </span>
+                        </div>
+                        <div class="text-sm leading-relaxed text-slate-700">${wordsHtml}</div>
+                    </div>
+                `;
+            }).join('');
+            
+            elements.transcript.innerHTML = html;
+            
+            // Add click listeners to words
+            elements.transcript.querySelectorAll('.word[data-time]').forEach(word => {
+                word.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const time = parseFloat(word.dataset.time);
+                    if (!isNaN(time) && elements.player.src) {
+                        jumpToTime(time);
+                    }
+                });
+            });
+            
+        } else {
+            elements.transcript.innerHTML = `
+                <div class="text-center py-8 text-slate-400">
+                    <div class="text-3xl mb-3">📄</div>
+                    <p>Unable to display chunk transcript</p>
+                </div>
+            `;
+        }
+        
+        // Update stats
+        const chunkText = chunkTranscript.text || '';
+        const wordCount = chunkText.split(' ').length;
+        elements.stats.textContent = `📊 Chunk ${chunkIndex + 1} • ${wordCount} words • ${formatTime(chunkDuration)}`;
+        
+        showInfoSections();
+    }
+    
+    function getChunkDuration(chunkTranscript) {
+        if (!chunkTranscript.chunks || chunkTranscript.chunks.length === 0) {
+            return 5; // fallback
+        }
+        
+        // Get the last timestamp's end time
+        const lastChunk = chunkTranscript.chunks[chunkTranscript.chunks.length - 1];
+        return lastChunk.timestamp[1]; // e.g., 4.96 seconds
+    }
+    
+    function showChunkModeInterface() {
+        // Update the chunk info to show chunk mode
+        elements.chunkInfo.textContent = `Chunk Mode: ${currentChunkIndex + 1} of ${currentSession.chunkTranscripts?.length || 0}`;
+        
+        // Show chunk navigation is active
+        elements.prevChunk.disabled = (currentChunkIndex === 0);
+        elements.nextChunk.disabled = (currentChunkIndex >= (currentSession.chunkTranscripts?.length - 1 || 0));
+    }
+    
+    function showChunkProcessingMessage() {
+        elements.transcript.innerHTML = `
+            <div class="text-center py-12 text-slate-400">
+                <div class="text-4xl mb-4">🎤</div>
+                <p class="text-lg mb-2">Processing chunk transcript...</p>
+                <p class="text-sm mb-4">This chunk is being transcribed</p>
+                <div class="text-xs text-slate-500 bg-slate-50 rounded-lg p-3">
+                    💡 <strong>Chunk Mode:</strong> Viewing one chunk at a time for real-time transcription
+                </div>
+            </div>
+        `;
+    }
+    
+    async function loadPreviousChunk() {
+        if (currentChunkIndex > 0) {
+            await loadChunkByTranscriptIndex(currentChunkIndex - 1);
+        }
+    }
+
+    async function loadNextChunk() {
+        if (currentSession && currentChunkIndex < (currentSession.chunkTranscripts?.length - 1 || 0)) {
+            await loadChunkByTranscriptIndex(currentChunkIndex + 1);
+        }
+    }
+    
+    function showNotification(message) {
+        // Simple notification (can be enhanced later)
+        console.log('🔔', message);
+        
+        // Create a temporary notification element
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed; top: 20px; right: 20px; z-index: 1000;
+            background: #10b981; color: white; padding: 12px 20px;
+            border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-size: 14px; max-width: 300px;
+        `;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+        
+        // Remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 5000);
     }
 
     function showProcessingMessage() {
