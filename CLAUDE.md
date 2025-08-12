@@ -162,6 +162,25 @@ The File Manager includes a "New Folder" button with full modal functionality:
 - **Navigation**: Click folders to navigate, use breadcrumbs to jump to parent directories
 - **Deletion**: Both files and folders can be deleted via dropdown menu
 
+### Recent Security and UX Improvements (August 2025)
+
+#### Path Duplication Bug Fix
+- **Issue**: Files were being stored with duplicated user paths (`users/{id}/users/{id}/audio/file`)
+- **Root Cause**: Frontend was sending full S3 paths, backend was adding user prefix again
+- **Solution**: Added `getRelativePath()` function to strip user prefix from frontend paths
+- **Security Improvement**: Frontend now only sends relative paths, backend determines user directory from JWT token
+- **Impact**: Prevents path manipulation attacks and ensures consistent file storage
+
+#### UI/UX Enhancements
+- **Hidden Marker Files**: `.folder` and `.folderkeeper` files are now filtered out of file listings
+- **Improved Breadcrumbs**: Breadcrumb navigation works correctly with proper path handling
+- **Enhanced Security**: User directory isolation enforced at API level rather than frontend level
+
+#### File Browser Path Security
+- **Frontend Behavior**: Only sends relative paths like `audio/filename.pdf`
+- **Backend Validation**: Extracts user ID from JWT token for secure path construction
+- **Result**: Prevents users from accessing or modifying other users' files through path manipulation
+
 ## S3 Screenshot Download Utility
 
 For debugging and reviewing user screenshots, use the provided Python script:
