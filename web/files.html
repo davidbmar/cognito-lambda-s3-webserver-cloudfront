@@ -1461,6 +1461,13 @@
                 } else if (pathParts.length === 1) {
                     // This is a file in the current directory
                     const fileName = pathParts[0];
+                    
+                    // Skip folder marker files
+                    if (fileName === '.folder' || fileName.endsWith('.folderkeeper')) {
+                        console.log('⏭️ SKIPPING FOLDER MARKER:', fileName);
+                        return;
+                    }
+                    
                     console.log('📄 ADDING FILE:', fileName);
                     fileList.push({
                         ...file,
