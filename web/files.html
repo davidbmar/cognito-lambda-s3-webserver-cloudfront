@@ -1297,6 +1297,26 @@
             }
         }
 
+        // Function to convert absolute path to relative path (removes user prefix)
+        function getRelativePath(fullPath) {
+            if (!fullPath) return '';
+            
+            console.log('🔄 Converting path to relative:', fullPath);
+            
+            // Remove user prefix if present
+            if (fullPath.startsWith('users/')) {
+                const pathParts = fullPath.split('/');
+                if (pathParts.length >= 3) {
+                    const relativePath = pathParts.slice(2).join('/');
+                    console.log('✅ Converted to relative:', relativePath);
+                    return relativePath;
+                }
+            }
+            
+            console.log('✅ Already relative:', fullPath);
+            return fullPath;
+        }
+
         function updateBreadcrumb() {
             const breadcrumbNav = document.getElementById('breadcrumb-nav');
             if (!breadcrumbNav) return;
@@ -1358,10 +1378,29 @@
         function extractFoldersAndFiles(files) {
             const folders = new Set();
             const fileList = [];
-            const currentPath = window.currentPath || '';
+            let currentPath = window.currentPath || '';
             
             console.log('extractFoldersAndFiles called with', files.length, 'files');
             console.log('Current path:', currentPath);
+            
+            // Convert currentPath to relative form (remove user prefix)
+            console.log('🔄 Converting currentPath:', currentPath);
+            if (currentPath && currentPath.startsWith('users/')) {
+                const pathParts = currentPath.split('/');
+                console.log('  Path parts:', pathParts);
+                if (pathParts.length >= 3) {
+                    currentPath = pathParts.slice(2).join('/');
+                    if (currentPath && !currentPath.endsWith('/')) {
+                        currentPath += '/';
+                    }
+                    console.log('  ✅ Converted to:', currentPath);
+                } else {
+                    console.log('  ❌ Not enough path parts');
+                }
+            } else {
+                console.log('  ❌ Not a users path or empty');
+            }
+            console.log('🎯 FINAL RELATIVE CURRENT PATH:', currentPath);
             
             // Extract userId from first file's key
             let userPrefix = '';
@@ -1394,32 +1433,44 @@
                 
                 // If we're in a subfolder, only show items in current directory
                 if (currentPath) {
+                    console.log('🔍 Checking if file matches current path...');
+                    console.log('  relativePath:', relativePath);
+                    console.log('  currentPath:', currentPath);
+                    console.log('  startsWith?', relativePath.startsWith(currentPath));
+                    
                     if (!relativePath.startsWith(currentPath)) {
+                        console.log('  ❌ SKIPPING - does not match current path');
                         return; // Skip files not in current path
                     }
+                    console.log('  ✅ MATCHES - processing...');
+                    
                     // Remove current path prefix
                     relativePath = relativePath.substring(currentPath.length);
+                    console.log('  After removing prefix:', relativePath);
                 }
                 
                 console.log('Path after prefix removal:', relativePath);
                 
                 // Split into path components
                 const pathParts = relativePath.split('/').filter(p => p.length > 0);
-                console.log('Path parts:', pathParts);
+                console.log('Path parts:', pathParts, 'length:', pathParts.length);
                 
                 if (pathParts.length === 0) {
+                    console.log('❌ SKIPPING - empty path parts');
                     return; // Skip empty paths
                 } else if (pathParts.length === 1) {
                     // This is a file in the current directory
                     const fileName = pathParts[0];
+                    console.log('📄 ADDING FILE:', fileName);
                     fileList.push({
                         ...file,
                         displayKey: fileName,
                         isFolder: false
                     });
                 } else {
-                    // This file is in a subdirectory - add the first level as a folder
+                    // This is in a subdirectory - add the first level as a folder
                     const folderName = pathParts[0];
+                    console.log('📁 ADDING FOLDER:', folderName);
                     folders.add(folderName);
                 }
             });
@@ -1433,8 +1484,9 @@
                 isFolder: true
             }));
             
-            console.log('Found folders:', Array.from(folders));
-            console.log('Found files:', fileList.map(f => f.displayKey));
+            console.log('🗂️ FINAL FOLDERS SET:', Array.from(folders));
+            console.log('📋 FINAL FILES LIST:', fileList.map(f => f.displayKey));
+            console.log('📊 SUMMARY: folders =', folders.size, ', files =', fileList.length);
             
             // Sort: folders first, then files
             const sortedFolders = folderObjects.sort((a, b) => a.displayKey.localeCompare(b.displayKey));
@@ -1468,7 +1520,11 @@
                     </div>
                 `;
                 
-                const response = await fetch(`/api/s3/list?prefix=`, {
+                // Use current path as API prefix for better performance
+                const apiPrefix = window.currentPath ? window.currentPath.replace(/^users\/[^\/]+\//, '') : '';
+                console.log('API prefix:', apiPrefix);
+                
+                const response = await fetch(`/api/s3/list?prefix=${encodeURIComponent(apiPrefix)}`, {
                     method: 'GET',
                     headers: {
                         'Authorization': `Bearer ${idToken}`,
@@ -1888,7 +1944,7 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        fileName: currentPath + item.name,
+                        fileName: getRelativePath(currentPath) + item.name,
                         contentType: item.type,
                         fileSize: item.size
                     })
@@ -2024,7 +2080,7 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        fileName: fullFolderPath + '.folder',
+                        fileName: getRelativePath(fullFolderPath) + '.folder',
                         contentType: 'text/plain',
                         fileSize: 0
                     })
