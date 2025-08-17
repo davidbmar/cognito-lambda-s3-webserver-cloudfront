@@ -115,6 +115,24 @@ elif [ -f web/audio.html ]; then
     echo "✅ audio.html updated with deployment values"
 fi
 
+# Update audio-pcm.html from template if it exists (NEW PCM RECORDER)
+if [ -f web/audio-pcm.html.template ]; then
+    echo "📝 Creating audio-pcm.html from template..."
+    cp web/audio-pcm.html.template web/audio-pcm.html
+    echo "✅ audio-pcm.html created from template"
+    
+    echo "📝 Updating audio-pcm.html with deployment values..."
+    sed -i.bak "s|USER_POOL_ID|$USER_POOL_ID|g" web/audio-pcm.html
+    sed -i.bak "s|USER_POOL_CLIENT_ID|$USER_POOL_CLIENT_ID|g" web/audio-pcm.html
+    sed -i.bak "s|IDENTITY_POOL_ID|$IDENTITY_POOL_ID|g" web/audio-pcm.html
+    sed -i.bak "s|CLOUDFRONT_API_ENDPOINT|$CLOUDFRONT_API_ENDPOINT|g" web/audio-pcm.html
+    sed -i.bak "s|AUDIO_API_ENDPOINT|$AUDIO_API_ENDPOINT|g" web/audio-pcm.html
+    sed -i.bak "s|CLOUDFRONT_URL|$CLOUDFRONT_URL|g" web/audio-pcm.html
+    sed -i.bak "s|REGION|$REGION|g" web/audio-pcm.html
+    
+    echo "✅ audio-pcm.html updated with deployment values"
+fi
+
 # Update transcriptions.html from template if it exists
 if [ -f web/transcriptions.html.template ]; then
     echo "📝 Creating transcriptions.html from template..."
@@ -170,7 +188,10 @@ echo
 echo -e "${BLUE}🔗 Your applications:${NC}"
 echo -e "${GREEN}   📁 File Manager: $CLOUDFRONT_URL${NC}"
 if [ -f web/audio.html ]; then
-    echo -e "${GREEN}   🎤 Audio Recorder: $CLOUDFRONT_URL/audio.html${NC}"
+    echo -e "${GREEN}   🎤 Audio Recorder (WebM): $CLOUDFRONT_URL/audio.html${NC}"
+fi
+if [ -f web/audio-pcm.html ]; then
+    echo -e "${GREEN}   🎙️ Audio Recorder (PCM/WAV): $CLOUDFRONT_URL/audio-pcm.html${NC}"
 fi
 if [ -f web/transcriptions.html ]; then
     echo -e "${GREEN}   📄 Transcription Viewer: $CLOUDFRONT_URL/transcriptions.html${NC}"

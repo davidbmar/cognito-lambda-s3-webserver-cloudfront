@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCM Audio Recorder - CloudDrive</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        @keyframes pulseDot { 
+            0%{transform:scale(1);opacity:1} 
+            50%{transform:scale(1.35);opacity:.65} 
+            100%{transform:scale(1);opacity:1} 
+        }
+        .pulse-dot { animation: pulseDot 1s ease-in-out infinite; }
+        .ctrl-btn { 
+            display:inline-flex; 
+            align-items:center; 
+            gap:.5rem; 
+            padding:.75rem 1rem; 
+            border-radius:.75rem; 
+            font-weight:600; 
+            font-size:.875rem; 
+            transition:all .15s; 
+        }
+        .ctrl-disabled { 
+            background:#cbd5e1; 
+            color:#475569; 
+            opacity:.9; 
+            cursor:not-allowed; 
+        }
+        .recording-item {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            transition: all 0.2s;
+        }
+        .recording-item:hover {
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .upload-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.125rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .upload-success { background: #dcfce7; color: #16a34a; }
+        .upload-pending { background: #fef3c7; color: #d97706; }
+        .upload-failed { background: #fee2e2; color: #dc2626; }
+        .upload-uploading { background: #dbeafe; color: #2563eb; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+    <main class="max-w-6xl mx-auto p-6 space-y-6">
+        <!-- Header with auth status -->
+        <header class="flex items-center justify-between border-b pb-4">
+            <div>
+                <h1 class="text-2xl font-bold">PCM Audio Recorder</h1>
+                <p class="text-sm text-slate-600 mt-1">High-quality WAV recording with S3 upload</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div id="authStatus" class="text-sm">
+                    <span class="text-slate-500">User:</span>
+                    <span id="userEmail" class="font-medium">Loading...</span>
+                </div>
+                <a href="/files.html" class="ctrl-btn bg-slate-600 text-white hover:bg-slate-700">
+                    📁 Files
+                </a>
+                <a href="/" class="ctrl-btn bg-slate-100 hover:bg-slate-200">
+                    ← Dashboard
+                </a>
+            </div>
+        </header>
+
+        <!-- Main recording interface -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Recording Controls -->
+            <section class="bg-white rounded-xl shadow-sm border p-6">
+                <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <span>🎙️</span> Recording Controls
+                </h2>
+                
+                <!-- Main controls -->
+                <div class="flex items-center gap-3 mb-6">
+                    <button id="btnStart" class="ctrl-btn text-white bg-emerald-600 hover:bg-emerald-700">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8 5v14l11-7z"/>
+                        </svg>
+                        <span>Start</span>
+                    </button>
+                    
+                    <button id="btnPause" class="ctrl-btn ctrl-disabled" disabled>
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M7 5h4v14H7zM13 5h4v14h-4z"/>
+                        </svg>
+                        <span>Pause</span>
+                    </button>
+                    
+                    <button id="btnResume" class="ctrl-btn ctrl-disabled" disabled>
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8 5v14l11-7z"/>
+                        </svg>
+                        <span>Resume</span>
+                    </button>
+                    
+                    <button id="btnStop" class="ctrl-btn ctrl-disabled" disabled>
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="6" y="6" width="12" height="12" rx="2"/>
+                        </svg>
+                        <span>Stop</span>
+                    </button>
+                </div>
+
+                <!-- Status display -->
+                <div class="bg-slate-50 rounded-lg p-4 mb-6">
+                    <div class="flex items-center justify-between mb-3">
+                        <div id="stateChip" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border">
+                            <span id="stateIcon">⏹️</span>
+                            <span id="stateLabel" class="text-sm font-medium">Ready</span>
+                        </div>
+                        <div id="timer" class="font-mono text-lg font-bold">00:00</div>
+                    </div>
+                    
+                    <!-- Level meter -->
+                    <div class="space-y-2">
+                        <div class="text-xs text-slate-500">Audio Level</div>
+                        <div class="h-3 bg-slate-200 rounded-full overflow-hidden">
+                            <div id="liveLevelBar" class="h-full bg-emerald-500 transition-[width] duration-75" style="width:0%"></div>
+                        </div>
+                        <div id="liveLevelText" class="text-xs text-slate-500">RMS: 0.00 • Peak: 0.00</div>
+                    </div>
+                </div>
+
+                <!-- Chunk duration control -->
+                <div class="space-y-3">
+                    <div class="flex items-center justify-between">
+                        <label class="text-sm font-medium">Chunk Duration</label>
+                        <span id="chunkValue" class="text-sm font-mono bg-slate-100 px-2 py-1 rounded">10s</span>
+                    </div>
+                    <input id="chunkSeconds" type="range" min="5" max="300" step="5" value="10" 
+                           class="w-full accent-emerald-600">
+                    <div class="flex justify-between text-xs text-slate-500">
+                        <span>5 sec</span>
+                        <span>5 min</span>
+                    </div>
+                </div>
+
+                <!-- Session stats -->
+                <div class="mt-6 pt-6 border-t grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <div class="text-slate-500">Session ID</div>
+                        <div id="sessionId" class="font-mono text-xs truncate">-</div>
+                    </div>
+                    <div>
+                        <div class="text-slate-500">Duration</div>
+                        <div id="sessionDuration" class="font-semibold">00:00</div>
+                    </div>
+                    <div>
+                        <div class="text-slate-500">Chunks</div>
+                        <div id="sessionChunks" class="font-semibold">0</div>
+                    </div>
+                    <div>
+                        <div class="text-slate-500">Total Size</div>
+                        <div id="sessionSize" class="font-semibold">0 MB</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Recordings List -->
+            <section class="bg-white rounded-xl shadow-sm border p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold flex items-center gap-2">
+                        <span>📼</span> Session Chunks
+                    </h2>
+                    <button id="btnClearAll" class="text-sm text-red-600 hover:text-red-700">
+                        Clear All
+                    </button>
+                </div>
+                
+                <div id="recordingsList" class="space-y-2 max-h-[600px] overflow-y-auto">
+                    <div class="text-center text-slate-400 py-8">
+                        No recordings yet. Click "Start" to begin recording.
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Debug/Info Panel -->
+        <div class="bg-white rounded-xl shadow-sm border p-4">
+            <details>
+                <summary class="cursor-pointer font-medium">Debug Information</summary>
+                <div id="debugLog" class="mt-3 font-mono text-xs space-y-1 max-h-40 overflow-y-auto">
+                </div>
+            </details>
+        </div>
+    </main>
+
+    <script type="module">
+        // Configuration
+        const config = {
+            userPoolId: 'USER_POOL_ID',
+            userPoolClientId: 'USER_POOL_CLIENT_ID',
+            identityPoolId: 'IDENTITY_POOL_ID',
+            region: 'REGION',
+            apiUrl: 'CLOUDFRONT_API_ENDPOINT',
+            audioApiUrl: 'AUDIO_API_ENDPOINT',
+            appUrl: 'CLOUDFRONT_URL'
+        };
+
+        // Debug logging
+        const log = (message) => {
+            console.log(message);
+            const timestamp = new Date().toLocaleTimeString();
+            const debugLog = document.getElementById('debugLog');
+            if (debugLog) {
+                const entry = document.createElement('div');
+                entry.textContent = `${timestamp}: ${message}`;
+                debugLog.appendChild(entry);
+                debugLog.scrollTop = debugLog.scrollHeight;
+            }
+        };
+
+        // Authentication
+        const getAuthToken = () => localStorage.getItem('id_token');
+        
+        const getUserFromToken = () => {
+            const token = getAuthToken();
+            if (!token) return null;
+            
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                return {
+                    email: payload.email,
+                    userId: payload.sub,
+                    name: payload.given_name || payload.email
+                };
+            } catch (error) {
+                log('Error parsing token: ' + error.message);
+                return null;
+            }
+        };
+
+        // Check auth on load
+        const user = getUserFromToken();
+        if (!user) {
+            window.location.href = '/';
+        } else {
+            document.getElementById('userEmail').textContent = user.email;
+            log(`Authenticated as: ${user.email}`);
+        }
+
+        // Import modules
+        import { createRecorderBox } from './js/recorder-box.js';
+        import { createS3Storage } from './js/storage-s3.js';
+
+        // Initialize recorder
+        let recorder = null;
+        let storage = null;
+        let currentSessionId = null;
+        const recordings = [];
+
+        async function initializeRecorder() {
+            try {
+                // Create S3 storage adapter
+                storage = await createS3Storage({
+                    apiUrl: config.audioApiUrl,
+                    getAuthToken: getAuthToken,
+                    getUserId: () => user.userId,
+                    enableLocalBackup: true
+                });
+
+                // Create recorder with S3 storage
+                recorder = await createRecorderBox({
+                    storage: storage,
+                    chunkSeconds: parseInt(document.getElementById('chunkSeconds').value),
+                    channels: 1
+                });
+
+                // Setup event listeners
+                recorder.on('status', ({ status }) => {
+                    updateUIState(status);
+                    log(`Status: ${status}`);
+                });
+
+                recorder.on('meter', ({ rms, peak }) => {
+                    const percent = Math.min(100, peak * 100);
+                    document.getElementById('liveLevelBar').style.width = `${percent}%`;
+                    document.getElementById('liveLevelText').textContent = 
+                        `RMS: ${rms.toFixed(2)} • Peak: ${peak.toFixed(2)}`;
+                });
+
+                recorder.on('chunk', ({ size, index }) => {
+                    log(`Chunk ${index} created: ${(size/1024).toFixed(1)} KB`);
+                    addChunkToList(index, size);
+                });
+
+                recorder.on('stats', ({ durationMs, chunkCount, bytes }) => {
+                    document.getElementById('sessionDuration').textContent = formatTime(Math.floor(durationMs / 1000));
+                    document.getElementById('sessionChunks').textContent = chunkCount;
+                    document.getElementById('sessionSize').textContent = `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+                });
+
+                log('Recorder initialized successfully');
+            } catch (error) {
+                log(`Failed to initialize recorder: ${error.message}`);
+                alert('Failed to initialize audio recorder. Please check permissions.');
+            }
+        }
+
+        // UI State Management
+        function updateUIState(status) {
+            const stateLabel = document.getElementById('stateLabel');
+            const stateIcon = document.getElementById('stateIcon');
+            const btnStart = document.getElementById('btnStart');
+            const btnPause = document.getElementById('btnPause');
+            const btnResume = document.getElementById('btnResume');
+            const btnStop = document.getElementById('btnStop');
+            
+            // Reset all buttons
+            [btnStart, btnPause, btnResume, btnStop].forEach(btn => {
+                btn.disabled = true;
+                btn.classList.add('ctrl-disabled');
+            });
+
+            switch(status) {
+                case 'idle':
+                    stateLabel.textContent = 'Ready';
+                    stateIcon.textContent = '⏹️';
+                    btnStart.disabled = false;
+                    btnStart.classList.remove('ctrl-disabled');
+                    break;
+                case 'recording':
+                    stateLabel.textContent = 'Recording';
+                    stateIcon.innerHTML = '<span class="pulse-dot">🔴</span>';
+                    btnPause.disabled = false;
+                    btnPause.classList.remove('ctrl-disabled');
+                    btnStop.disabled = false;
+                    btnStop.classList.remove('ctrl-disabled');
+                    break;
+                case 'paused':
+                    stateLabel.textContent = 'Paused';
+                    stateIcon.textContent = '⏸️';
+                    btnResume.disabled = false;
+                    btnResume.classList.remove('ctrl-disabled');
+                    btnStop.disabled = false;
+                    btnStop.classList.remove('ctrl-disabled');
+                    break;
+            }
+        }
+
+        // Recording controls
+        document.getElementById('btnStart').addEventListener('click', async () => {
+            currentSessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+            document.getElementById('sessionId').textContent = currentSessionId;
+            document.getElementById('recordingsList').innerHTML = '';
+            recordings.length = 0;
+            
+            const result = await recorder.start();
+            if (result.recordingId) {
+                currentSessionId = result.recordingId;
+                document.getElementById('sessionId').textContent = currentSessionId;
+            }
+        });
+
+        document.getElementById('btnPause').addEventListener('click', () => {
+            recorder.pause();
+        });
+
+        document.getElementById('btnResume').addEventListener('click', () => {
+            recorder.resume();
+        });
+
+        document.getElementById('btnStop').addEventListener('click', () => {
+            recorder.stop();
+            currentSessionId = null;
+        });
+
+        // Chunk duration control
+        const chunkSlider = document.getElementById('chunkSeconds');
+        const chunkValue = document.getElementById('chunkValue');
+        
+        chunkSlider.addEventListener('input', (e) => {
+            const seconds = parseInt(e.target.value);
+            if (seconds >= 60) {
+                chunkValue.textContent = `${Math.floor(seconds/60)}m ${seconds%60}s`;
+            } else {
+                chunkValue.textContent = `${seconds}s`;
+            }
+        });
+
+        // Timer
+        let timerInterval = null;
+        let timerSeconds = 0;
+        
+        function startTimer() {
+            timerSeconds = 0;
+            timerInterval = setInterval(() => {
+                timerSeconds++;
+                document.getElementById('timer').textContent = formatTime(timerSeconds);
+            }, 1000);
+        }
+        
+        function stopTimer() {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            timerSeconds = 0;
+            document.getElementById('timer').textContent = '00:00';
+        }
+
+        // Helper functions
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function addChunkToList(index, size) {
+            const recording = {
+                id: `${currentSessionId}-chunk-${index}`,
+                index: index,
+                size: size,
+                timestamp: new Date(),
+                status: 'uploading'
+            };
+            
+            recordings.push(recording);
+            renderRecordingsList();
+            
+            // Simulate upload success after a delay (replace with real status from S3 adapter)
+            setTimeout(() => {
+                recording.status = 'uploaded';
+                renderRecordingsList();
+            }, 2000);
+        }
+
+        function renderRecordingsList() {
+            const container = document.getElementById('recordingsList');
+            
+            if (recordings.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-slate-400 py-8">
+                        No recordings yet. Click "Start" to begin recording.
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = recordings.map(rec => `
+                <div class="recording-item">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <div class="font-medium">Chunk ${rec.index + 1}</div>
+                            <div class="text-xs text-slate-500">
+                                ${rec.timestamp.toLocaleTimeString()} • ${(rec.size/1024).toFixed(1)} KB
+                            </div>
+                        </div>
+                        <div class="upload-badge ${getUploadClass(rec.status)}">
+                            ${getUploadIcon(rec.status)} ${rec.status}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function getUploadClass(status) {
+            switch(status) {
+                case 'uploaded': return 'upload-success';
+                case 'uploading': return 'upload-uploading';
+                case 'failed': return 'upload-failed';
+                default: return 'upload-pending';
+            }
+        }
+
+        function getUploadIcon(status) {
+            switch(status) {
+                case 'uploaded': return '✓';
+                case 'uploading': return '⏳';
+                case 'failed': return '✗';
+                default: return '•';
+            }
+        }
+
+        // Clear all recordings
+        document.getElementById('btnClearAll').addEventListener('click', () => {
+            if (confirm('Clear all recordings from this session?')) {
+                recordings.length = 0;
+                renderRecordingsList();
+                log('Cleared all recordings');
+            }
+        });
+
+        // Update timer when recording state changes
+        recorder?.on('status', ({ status }) => {
+            if (status === 'recording') {
+                startTimer();
+            } else if (status === 'idle') {
+                stopTimer();
+            }
+        });
+
+        // Initialize on page load
+        initializeRecorder();
+    </script>
+</body>
+</html>
