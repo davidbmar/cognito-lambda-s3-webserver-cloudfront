@@ -519,16 +519,9 @@
                     session.hasTranscript = true;
                     session.transcriptType = 'complete';
                 } else {
-                    // Check for partial chunk transcripts
-                    const chunkTranscripts = transcriptFiles.filter(f => 
-                        f.key.includes(sessionId) && f.key.includes('-chunk-'));
-                    
-                    if (chunkTranscripts.length > 0) {
-                        session.hasTranscript = true;
-                        session.transcriptType = 'partial';
-                        session.chunkTranscriptCount = chunkTranscripts.length;
-                        session.chunkTranscripts = chunkTranscripts.map(f => f.key).sort();
-                    }
+                    // No transcript available yet
+                    session.hasTranscript = false;
+                    session.transcriptType = 'none';
                 }
             });
 
