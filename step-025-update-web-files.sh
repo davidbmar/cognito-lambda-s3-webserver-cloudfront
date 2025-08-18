@@ -145,6 +145,7 @@ if [ -f web/transcriptions.html.template ]; then
     sed -i.bak "s|YOUR_IDENTITY_POOL_ID|$IDENTITY_POOL_ID|g" web/transcriptions.html
     sed -i.bak "s|YOUR_CLOUDFRONT_API_ENDPOINT|$CLOUDFRONT_API_ENDPOINT|g" web/transcriptions.html
     sed -i.bak "s|YOUR_CLOUDFRONT_S3_API_ENDPOINT|${CLOUDFRONT_URL}/api/s3/list|g" web/transcriptions.html
+    sed -i.bak "s|YOUR_AUDIO_API_ENDPOINT|$AUDIO_API_ENDPOINT|g" web/transcriptions.html
     sed -i.bak "s|YOUR_REGION|$REGION|g" web/transcriptions.html
     sed -i.bak "s|YOUR_APP_URL|$CLOUDFRONT_URL|g" web/transcriptions.html
     
@@ -159,6 +160,7 @@ elif [ -f web/transcriptions.html ]; then
     sed -i.tmp "s|identityPoolId: '[^']*'|identityPoolId: '$IDENTITY_POOL_ID'|g" web/transcriptions.html
     sed -i.tmp "s|apiUrl: '[^']*'|apiUrl: '$CLOUDFRONT_API_ENDPOINT'|g" web/transcriptions.html
     sed -i.tmp "s|s3ApiUrl: '[^']*'|s3ApiUrl: '${CLOUDFRONT_URL}/api/s3/list'|g" web/transcriptions.html
+    sed -i.tmp "s|audioApiUrl: '[^']*'|audioApiUrl: '$AUDIO_API_ENDPOINT'|g" web/transcriptions.html
     sed -i.tmp "s|appUrl: '[^']*'|appUrl: '$CLOUDFRONT_URL'|g" web/transcriptions.html
     
     rm -f web/transcriptions.html.tmp

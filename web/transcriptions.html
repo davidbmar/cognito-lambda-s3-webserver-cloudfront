@@ -290,6 +290,7 @@
         region: 'us-east-2',
         apiUrl: 'https://d2vkipfwau0424.cloudfront.net/api/data',
         s3ApiUrl: 'https://d2vkipfwau0424.cloudfront.net/api/s3/list',
+        audioApiUrl: 'https://d2vkipfwau0424.cloudfront.net/api/audio',
         appUrl: 'https://d2vkipfwau0424.cloudfront.net'
     };
 
@@ -440,7 +441,7 @@
             `;
             
             const idToken = localStorage.getItem('id_token');
-            const response = await fetch(`${config.s3ApiUrl}`, {
+            const response = await fetch(`${config.audioApiUrl}/sessions`, {
                 headers: {
                     'Authorization': `Bearer ${idToken}`
                 }
@@ -452,53 +453,69 @@
 
             const data = await response.json();
             
-            // Filter for audio sessions - support both old and new formats
-            const audioFiles = data.files
-                .filter(file => {
-                    // New format: users/{userId}/audio/sessions/{sessionId}/chunk-{n}.(wav|webm)
-                    // Old format: users/{userId}/audio/sessions/{sessionId}/chunks/{start}-{end}.webm
-                    const isNewFormat = file.key.includes('/audio/sessions/') && 
-                                       (file.key.endsWith('.wav') || file.key.endsWith('.webm')) &&
-                                       file.key.match(/chunk-\d+\.(wav|webm)$/);
-                    const isOldFormat = file.key.includes('/audio/sessions/') && 
-                                       file.key.includes('/chunks/') &&
-                                       file.key.endsWith('.webm') &&
-                                       file.key.match(/\d+-\d+\.webm$/);
-                    return isNewFormat || isOldFormat;
-                })
-                .map(file => parseSessionFromS3Key(file));
+            // Check if we have sessions from the audio API
+            if (!data.sessions || data.sessions.length === 0) {
+                elements.sessionList.innerHTML = `
+                    <div class="text-center py-12 text-slate-400">
+                        <div class="text-6xl mb-4">🎤</div>
+                        <h3 class="text-xl font-medium mb-2">No audio sessions found</h3>
+                        <p class="text-sm">Start recording to see your sessions here.</p>
+                        <a href="audio.html" class="inline-block mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                            Start Recording
+                        </a>
+                    </div>
+                `;
+                return;
+            }
 
-            // Group by session ID
+            // Process sessions from audio API
             const sessionMap = new Map();
-            audioFiles.forEach(audioFile => {
-                const sessionId = audioFile.sessionId;
-                if (!sessionMap.has(sessionId)) {
-                    sessionMap.set(sessionId, {
-                        sessionId,
-                        date: audioFile.date,
-                        chunks: [],
-                        hasTranscript: false,
-                        totalSize: 0
-                    });
+            data.sessions.forEach(session => {
+                const sessionId = session.sessionId || session.folder;
+                const metadata = session.metadata;
+                
+                // Parse session date and timestamp from folder name or metadata
+                let sessionDate, sessionTimestamp;
+                const sessionFolder = session.folder || sessionId;
+                
+                // New format with time: 2025-08-18T15-30-45-sessionId
+                const newTimeMatch = sessionFolder.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}-\d{2}-\d{2})/);
+                if (newTimeMatch) {
+                    sessionDate = newTimeMatch[1];
+                    const timeStr = newTimeMatch[2].replace(/-/g, ':');
+                    sessionTimestamp = new Date(`${sessionDate}T${timeStr}Z`).toISOString();
+                } else {
+                    // Old format: 2025-08-18-sessionId
+                    const oldDateMatch = sessionFolder.match(/^(\d{4}-\d{2}-\d{2})/);
+                    if (oldDateMatch) {
+                        sessionDate = oldDateMatch[1];
+                        sessionTimestamp = new Date(`${sessionDate}T00:00:00Z`).toISOString();
+                    } else {
+                        // No date format, use current date
+                        sessionDate = new Date().toISOString().split('T')[0];
+                        sessionTimestamp = new Date().toISOString();
+                    }
                 }
                 
-                const session = sessionMap.get(sessionId);
-                session.chunks.push(audioFile);
-                session.totalSize += audioFile.size;
+                sessionMap.set(sessionId, {
+                    sessionId,
+                    folder: sessionFolder,
+                    date: sessionDate,
+                    timestamp: sessionTimestamp,
+                    metadata: metadata,
+                    chunks: [],
+                    hasTranscript: false,
+                    totalSize: 0,
+                    status: metadata?.status || 'unknown',
+                    chunkCount: metadata?.chunkCount || 0
+                });
             });
 
-            // Check for transcripts - both session-level and chunk transcripts
-            // Looking for files like: users/{userId}/transcripts/{sessionId}.json or users/{userId}/transcripts/{sessionId}-chunk-{n}.json
-            const transcriptFiles = data.files
-                .filter(file => file.key.includes('transcripts/') && file.key.endsWith('.json'));
-            
-            // Process each session to determine transcript status
+            // For now, transcripts are not yet implemented in the audio API
+            // Future: Add transcript status from audio session metadata
             sessionMap.forEach((session, sessionId) => {
-                // Check for complete session transcript
-                const hasSessionTranscript = transcriptFiles.some(f => 
-                    f.key.endsWith(`${sessionId}.json`) && !f.key.includes('-chunk-'));
-                
-                if (hasSessionTranscript) {
+                // Check if session metadata indicates transcription is available
+                if (session.metadata?.transcriptionStatus === 'completed') {
                     session.hasTranscript = true;
                     session.transcriptType = 'complete';
                 } else {
@@ -527,13 +544,30 @@
 
         } catch (error) {
             console.error('Failed to load sessions:', error);
+            let errorMessage = 'Failed to load sessions';
+            
+            // Check if it's an authentication error
+            if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+                errorMessage = 'Authentication required. Please log in to view your sessions.';
+            } else if (error.message.includes('403') || error.message.includes('Forbidden')) {
+                errorMessage = 'Access denied. Please check your permissions.';
+            } else if (error.message.includes('404') || error.message.includes('Not Found')) {
+                errorMessage = 'Audio sessions service not found.';
+            }
+            
             elements.sessionList.innerHTML = `
                 <div class="text-center py-8 text-red-600">
                     <div class="text-2xl mb-2">❌</div>
-                    <p class="mb-3">Failed to load sessions</p>
-                    <button onclick="loadSessions()" class="text-sm px-3 py-2 bg-red-100 hover:bg-red-200 rounded-lg transition-colors">
-                        🔄 Retry
-                    </button>
+                    <p class="mb-3">${errorMessage}</p>
+                    <p class="text-sm text-gray-600 mb-3">${error.message}</p>
+                    <div class="space-x-2">
+                        <button onclick="loadSessions()" class="text-sm px-3 py-2 bg-red-100 hover:bg-red-200 rounded-lg transition-colors">
+                            🔄 Retry
+                        </button>
+                        <a href="/" class="inline-block text-sm px-3 py-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors">
+                            🏠 Go to Login
+                        </a>
+                    </div>
                 </div>
             `;
         }
@@ -558,40 +592,39 @@
         }
         
         // Extract date and timestamp from session folder
-        const dateMatch = sessionFolder.match(/^(\d{4}-\d{2}-\d{2})|(\d{4})(\d{2}).*(\d{2})-(\d{6})/);
         let sessionDate = 'Unknown';
         let sessionTimestamp = file.lastModified; // Fallback to file modification time
         
-        if (dateMatch) {
-            if (dateMatch[1]) {
-                // New format: 2025-08-18-sessionId
-                sessionDate = dateMatch[1];
-                // Try to extract timestamp from session ID if available
-                const timestampMatch = sessionFolder.match(/session-(\d+)-/);
-                if (timestampMatch) {
-                    try {
-                        sessionTimestamp = new Date(parseInt(timestampMatch[1])).toISOString();
-                    } catch (e) {
-                        sessionTimestamp = file.lastModified;
-                    }
-                } else {
-                    // Use file modification time for more accurate sorting
+        // New format with time: 2025-08-18T15-30-45-sessionId
+        const newTimeMatch = sessionFolder.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}-\d{2}-\d{2})/);
+        if (newTimeMatch) {
+            sessionDate = newTimeMatch[1];
+            const timeStr = newTimeMatch[2].replace(/-/g, ':');
+            sessionTimestamp = new Date(`${sessionDate}T${timeStr}Z`).toISOString();
+        } else {
+            // Legacy formats
+            const dateMatch = sessionFolder.match(/^(\d{4}-\d{2}-\d{2})|(\d{4})(\d{2}).*(\d{2})-(\d{6})/);
+            
+            if (dateMatch) {
+                if (dateMatch[1]) {
+                    // Old format: 2025-08-18-sessionId (without time)
+                    sessionDate = dateMatch[1];
                     sessionTimestamp = file.lastModified;
-                }
-            } else if (dateMatch[2]) {
-                // Old format: 202507JUL04-222805 -> 2025-07-04
-                const year = dateMatch[2];
-                const month = dateMatch[3];
-                const timeMatch = sessionFolder.match(/-(\d{6})$/);
-                sessionDate = `${year}-${month.padStart(2, '0')}-04`; // Approximate day
-                
-                if (timeMatch) {
-                    // Convert HHMMSS to full timestamp
-                    const timeStr = timeMatch[1];
-                    const hours = timeStr.substring(0, 2);
-                    const minutes = timeStr.substring(2, 4);
-                    const seconds = timeStr.substring(4, 6);
-                    sessionTimestamp = new Date(`${sessionDate}T${hours}:${minutes}:${seconds}Z`).toISOString();
+                } else if (dateMatch[2]) {
+                    // Very old format: 202507JUL04-222805 -> 2025-07-04
+                    const year = dateMatch[2];
+                    const month = dateMatch[3];
+                    const timeMatch = sessionFolder.match(/-(\d{6})$/);
+                    sessionDate = `${year}-${month.padStart(2, '0')}-04`; // Approximate day
+                    
+                    if (timeMatch) {
+                        // Convert HHMMSS to full timestamp
+                        const timeStr = timeMatch[1];
+                        const hours = timeStr.substring(0, 2);
+                        const minutes = timeStr.substring(2, 4);
+                        const seconds = timeStr.substring(4, 6);
+                        sessionTimestamp = new Date(`${sessionDate}T${hours}:${minutes}:${seconds}Z`).toISOString();
+                    }
                 }
             }
         }

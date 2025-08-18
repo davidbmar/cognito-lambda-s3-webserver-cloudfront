@@ -61,15 +61,11 @@ module.exports.uploadChunk = async (event) => {
       };
     }
 
-    // Create timestamp-based session folder with UTC time
-    const now = new Date();
-    const date = now.toISOString().split('T')[0]; // YYYY-MM-DD
-    const time = now.toISOString().split('T')[1].split('.')[0].replace(/:/g, '-'); // HH-MM-SS
-    const timestampWithTime = `${date}T${time}`;
+    // Use the sessionId directly as the folder name (frontend now generates timestamped sessionId)
     const paddedChunkNumber = chunkNumber.toString().padStart(3, '0');
     
     // Build S3 key with user isolation
-    const s3Key = `users/${userId}/audio/sessions/${timestampWithTime}-${sanitizedSessionId}/chunk-${paddedChunkNumber}.wav`;
+    const s3Key = `users/${userId}/audio/sessions/${sanitizedSessionId}/chunk-${paddedChunkNumber}.wav`;
     
     console.log(`Generating upload URL for chunk ${chunkNumber} of session ${sanitizedSessionId}`);
 

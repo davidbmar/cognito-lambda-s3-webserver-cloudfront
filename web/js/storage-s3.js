@@ -22,11 +22,13 @@ export async function createS3Storage({
     // Active sessions
     const sessions = new Map();
     
-    // Generate session ID
+    // Generate session ID with timestamp
     const generateSessionId = () => {
-        const timestamp = Date.now();
+        const now = new Date();
+        const date = now.toISOString().split('T')[0]; // YYYY-MM-DD
+        const time = now.toISOString().split('T')[1].split('.')[0].replace(/:/g, '-'); // HH-MM-SS
         const random = Math.random().toString(36).substring(2, 8);
-        return `session-${timestamp}-${random}`;
+        return `${date}T${time}-${random}`;
     };
     
     // Upload chunk to S3
