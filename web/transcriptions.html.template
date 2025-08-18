@@ -452,9 +452,20 @@
 
             const data = await response.json();
             
-            // Filter for audio sessions
+            // Filter for audio sessions - support both old and new formats
             const audioFiles = data.files
-                .filter(file => file.key.includes('/audio/sessions/') && (file.key.endsWith('.wav') || file.key.endsWith('.webm')))
+                .filter(file => {
+                    // New format: users/{userId}/audio/sessions/{sessionId}/chunk-{n}.(wav|webm)
+                    // Old format: users/{userId}/audio/sessions/{sessionId}/chunks/{start}-{end}.webm
+                    const isNewFormat = file.key.includes('/audio/sessions/') && 
+                                       (file.key.endsWith('.wav') || file.key.endsWith('.webm')) &&
+                                       file.key.match(/chunk-\d+\.(wav|webm)$/);
+                    const isOldFormat = file.key.includes('/audio/sessions/') && 
+                                       file.key.includes('/chunks/') &&
+                                       file.key.endsWith('.webm') &&
+                                       file.key.match(/\d+-\d+\.webm$/);
+                    return isNewFormat || isOldFormat;
+                })
                 .map(file => parseSessionFromS3Key(file));
 
             // Group by session ID
@@ -505,7 +516,12 @@
             });
 
             allSessions = Array.from(sessionMap.values())
-                .sort((a, b) => new Date(b.date) - new Date(a.date));
+                .sort((a, b) => {
+                    // Sort by timestamp first (most recent first), then by date
+                    const aTime = a.timestamp || a.date;
+                    const bTime = b.timestamp || b.date;
+                    return new Date(bTime) - new Date(aTime);
+                });
 
             displaySessions();
 
@@ -524,20 +540,66 @@
     }
 
     function parseSessionFromS3Key(file) {
-        // Parse: users/{userId}/audio/sessions/{date}-{sessionId}/chunk-{num}.(wav|webm)
         const keyParts = file.key.split('/');
-        const sessionFolder = keyParts[keyParts.length - 2];
         const fileName = keyParts[keyParts.length - 1];
+        let sessionFolder, chunkNumber = 0;
         
-        const chunkMatch = fileName.match(/chunk-(\d+)\.(wav|webm)/);
-        const chunkNumber = chunkMatch ? parseInt(chunkMatch[1]) : 0;
+        // Check if this is the old format: users/{userId}/audio/sessions/{sessionId}/chunks/{start}-{end}.webm
+        if (file.key.includes('/chunks/') && fileName.match(/\d+-\d+\.webm$/)) {
+            // Old format: extract session from 3rd last part (before /chunks/)
+            sessionFolder = keyParts[keyParts.length - 3];
+            const chunkMatch = fileName.match(/(\d+)-\d+\.webm$/);
+            chunkNumber = chunkMatch ? parseInt(chunkMatch[1]) / 5 : 0; // Convert start time to chunk number
+        } else {
+            // New format: users/{userId}/audio/sessions/{sessionId}/chunk-{num}.(wav|webm)
+            sessionFolder = keyParts[keyParts.length - 2];
+            const chunkMatch = fileName.match(/chunk-(\d+)\.(wav|webm)/);
+            chunkNumber = chunkMatch ? parseInt(chunkMatch[1]) : 0;
+        }
         
-        const dateMatch = sessionFolder.match(/^(\d{4}-\d{2}-\d{2})/);
-        const sessionDate = dateMatch ? dateMatch[1] : 'Unknown';
+        // Extract date and timestamp from session folder
+        const dateMatch = sessionFolder.match(/^(\d{4}-\d{2}-\d{2})|(\d{4})(\d{2}).*(\d{2})-(\d{6})/);
+        let sessionDate = 'Unknown';
+        let sessionTimestamp = file.lastModified; // Fallback to file modification time
+        
+        if (dateMatch) {
+            if (dateMatch[1]) {
+                // New format: 2025-08-18-sessionId
+                sessionDate = dateMatch[1];
+                // Try to extract timestamp from session ID if available
+                const timestampMatch = sessionFolder.match(/session-(\d+)-/);
+                if (timestampMatch) {
+                    try {
+                        sessionTimestamp = new Date(parseInt(timestampMatch[1])).toISOString();
+                    } catch (e) {
+                        sessionTimestamp = file.lastModified;
+                    }
+                } else {
+                    // Use file modification time for more accurate sorting
+                    sessionTimestamp = file.lastModified;
+                }
+            } else if (dateMatch[2]) {
+                // Old format: 202507JUL04-222805 -> 2025-07-04
+                const year = dateMatch[2];
+                const month = dateMatch[3];
+                const timeMatch = sessionFolder.match(/-(\d{6})$/);
+                sessionDate = `${year}-${month.padStart(2, '0')}-04`; // Approximate day
+                
+                if (timeMatch) {
+                    // Convert HHMMSS to full timestamp
+                    const timeStr = timeMatch[1];
+                    const hours = timeStr.substring(0, 2);
+                    const minutes = timeStr.substring(2, 4);
+                    const seconds = timeStr.substring(4, 6);
+                    sessionTimestamp = new Date(`${sessionDate}T${hours}:${minutes}:${seconds}Z`).toISOString();
+                }
+            }
+        }
         
         return {
             sessionId: sessionFolder,
             date: sessionDate,
+            timestamp: sessionTimestamp,
             chunkNumber,
             s3Key: file.key,
             size: file.size,
