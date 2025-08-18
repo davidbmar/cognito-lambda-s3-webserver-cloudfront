@@ -468,6 +468,19 @@
                 return;
             }
 
+            // Also fetch S3 file information for audio playback and transcripts
+            const s3Response = await fetch(`${config.s3ApiUrl}`, {
+                headers: {
+                    'Authorization': `Bearer ${idToken}`
+                }
+            });
+
+            let s3Files = [];
+            if (s3Response.ok) {
+                const s3Data = await s3Response.json();
+                s3Files = s3Data.files || [];
+            }
+
             // Process sessions from audio API
             const sessionMap = new Map();
             data.sessions.forEach(session => {
@@ -511,17 +524,62 @@
                 });
             });
 
-            // For now, transcripts are not yet implemented in the audio API
-            // Future: Add transcript status from audio session metadata
+            // Process S3 files to get audio chunks and transcripts for each session
+            const audioFiles = s3Files.filter(file => {
+                // New format: users/{userId}/audio/sessions/{sessionId}/chunk-{n}.(wav|webm)
+                // Old format: users/{userId}/audio/sessions/{sessionId}/chunks/{start}-{end}.webm
+                const isNewFormat = file.key.includes('/audio/sessions/') && 
+                                   (file.key.endsWith('.wav') || file.key.endsWith('.webm')) &&
+                                   file.key.match(/chunk-\d+\.(wav|webm)$/);
+                const isOldFormat = file.key.includes('/audio/sessions/') && 
+                                   file.key.includes('/chunks/') &&
+                                   file.key.endsWith('.webm') &&
+                                   file.key.match(/\d+-\d+\.webm$/);
+                return isNewFormat || isOldFormat;
+            });
+
+            const transcriptFiles = s3Files.filter(file => 
+                file.key.includes('transcripts/') && file.key.endsWith('.json'));
+
+            // Associate S3 files with sessions
+            audioFiles.forEach(file => {
+                const audioFile = parseSessionFromS3Key(file);
+                const session = sessionMap.get(audioFile.sessionId);
+                if (session) {
+                    session.chunks.push(audioFile);
+                    session.totalSize += audioFile.size || 0;
+                }
+            });
+
+            // Check for transcripts in S3
             sessionMap.forEach((session, sessionId) => {
-                // Check if session metadata indicates transcription is available
-                if (session.metadata?.transcriptionStatus === 'completed') {
+                // Check for complete session transcript
+                const hasSessionTranscript = transcriptFiles.some(f => 
+                    f.key.endsWith(`${sessionId}.json`) && !f.key.includes('-chunk-'));
+                
+                if (hasSessionTranscript) {
                     session.hasTranscript = true;
                     session.transcriptType = 'complete';
                 } else {
-                    // No transcript available yet
-                    session.hasTranscript = false;
-                    session.transcriptType = 'none';
+                    // Check for partial chunk transcripts
+                    const chunkTranscripts = transcriptFiles.filter(f => 
+                        f.key.includes(sessionId) && f.key.includes('-chunk-'));
+                    
+                    if (chunkTranscripts.length > 0) {
+                        session.hasTranscript = true;
+                        session.transcriptType = 'partial';
+                        session.chunkTranscriptCount = chunkTranscripts.length;
+                        session.chunkTranscripts = chunkTranscripts.map(f => f.key).sort();
+                    } else {
+                        // Check if session metadata indicates transcription is available
+                        if (session.metadata?.transcriptionStatus === 'completed') {
+                            session.hasTranscript = true;
+                            session.transcriptType = 'complete';
+                        } else {
+                            session.hasTranscript = false;
+                            session.transcriptType = 'none';
+                        }
+                    }
                 }
             });
 
