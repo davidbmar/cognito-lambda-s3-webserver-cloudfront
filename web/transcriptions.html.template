@@ -558,40 +558,39 @@
         }
         
         // Extract date and timestamp from session folder
-        const dateMatch = sessionFolder.match(/^(\d{4}-\d{2}-\d{2})|(\d{4})(\d{2}).*(\d{2})-(\d{6})/);
         let sessionDate = 'Unknown';
         let sessionTimestamp = file.lastModified; // Fallback to file modification time
         
-        if (dateMatch) {
-            if (dateMatch[1]) {
-                // New format: 2025-08-18-sessionId
-                sessionDate = dateMatch[1];
-                // Try to extract timestamp from session ID if available
-                const timestampMatch = sessionFolder.match(/session-(\d+)-/);
-                if (timestampMatch) {
-                    try {
-                        sessionTimestamp = new Date(parseInt(timestampMatch[1])).toISOString();
-                    } catch (e) {
-                        sessionTimestamp = file.lastModified;
-                    }
-                } else {
-                    // Use file modification time for more accurate sorting
+        // New format with time: 2025-08-18T15-30-45-sessionId
+        const newTimeMatch = sessionFolder.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}-\d{2}-\d{2})/);
+        if (newTimeMatch) {
+            sessionDate = newTimeMatch[1];
+            const timeStr = newTimeMatch[2].replace(/-/g, ':');
+            sessionTimestamp = new Date(`${sessionDate}T${timeStr}Z`).toISOString();
+        } else {
+            // Legacy formats
+            const dateMatch = sessionFolder.match(/^(\d{4}-\d{2}-\d{2})|(\d{4})(\d{2}).*(\d{2})-(\d{6})/);
+            
+            if (dateMatch) {
+                if (dateMatch[1]) {
+                    // Old format: 2025-08-18-sessionId (without time)
+                    sessionDate = dateMatch[1];
                     sessionTimestamp = file.lastModified;
-                }
-            } else if (dateMatch[2]) {
-                // Old format: 202507JUL04-222805 -> 2025-07-04
-                const year = dateMatch[2];
-                const month = dateMatch[3];
-                const timeMatch = sessionFolder.match(/-(\d{6})$/);
-                sessionDate = `${year}-${month.padStart(2, '0')}-04`; // Approximate day
-                
-                if (timeMatch) {
-                    // Convert HHMMSS to full timestamp
-                    const timeStr = timeMatch[1];
-                    const hours = timeStr.substring(0, 2);
-                    const minutes = timeStr.substring(2, 4);
-                    const seconds = timeStr.substring(4, 6);
-                    sessionTimestamp = new Date(`${sessionDate}T${hours}:${minutes}:${seconds}Z`).toISOString();
+                } else if (dateMatch[2]) {
+                    // Very old format: 202507JUL04-222805 -> 2025-07-04
+                    const year = dateMatch[2];
+                    const month = dateMatch[3];
+                    const timeMatch = sessionFolder.match(/-(\d{6})$/);
+                    sessionDate = `${year}-${month.padStart(2, '0')}-04`; // Approximate day
+                    
+                    if (timeMatch) {
+                        // Convert HHMMSS to full timestamp
+                        const timeStr = timeMatch[1];
+                        const hours = timeStr.substring(0, 2);
+                        const minutes = timeStr.substring(2, 4);
+                        const seconds = timeStr.substring(4, 6);
+                        sessionTimestamp = new Date(`${sessionDate}T${hours}:${minutes}:${seconds}Z`).toISOString();
+                    }
                 }
             }
         }
