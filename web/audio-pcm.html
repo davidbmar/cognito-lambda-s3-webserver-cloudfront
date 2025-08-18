@@ -53,6 +53,43 @@
         .upload-pending { background: #fef3c7; color: #d97706; }
         .upload-failed { background: #fee2e2; color: #dc2626; }
         .upload-uploading { background: #dbeafe; color: #2563eb; }
+        
+        /* Enhanced player and chunk styles */
+        #unifiedPlayer { transition: all 0.3s ease; }
+        .chunk-item { transition: all 0.2s ease; position: relative; }
+        .chunk-item.playing {
+            background: linear-gradient(to right, #EFF6FF, #DBEAFE);
+            border-color: #3B82F6;
+        }
+        .chunk-item.hidden { display: none !important; }
+        .chunk-indicator {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 70%;
+            background: #3B82F6;
+            border-radius: 2px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .chunk-item.playing .chunk-indicator {
+            opacity: 1;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Mobile optimizations */
+        @media (max-width: 640px) {
+            #unifiedPlayer { padding: 12px; }
+            #mainPlayPause { width: 40px; height: 40px; }
+            .chunk-item { padding: 10px; }
+            .chunk-play-btn { width: 32px; height: 32px; }
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -171,27 +208,19 @@
                 </div>
             </section>
 
-            <!-- Enhanced Playback Interface -->
+            <!-- Recordings List -->
             <section class="bg-white rounded-xl shadow-sm border p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-lg font-semibold flex items-center gap-2">
-                        <span>🎵</span> Session Chunks
-                        <span id="chunkCounter" class="text-sm bg-slate-100 px-2 py-1 rounded-full">0</span>
+                        <span>📼</span> Session Chunks
+                        <span id="chunkCount" class="text-sm bg-slate-100 px-2 py-1 rounded-full">0</span>
                     </h2>
-                    <div class="flex items-center gap-3">
-                        <button id="btnPlaySession" class="ctrl-btn bg-blue-600 text-white hover:bg-blue-700 text-sm">
-                            <span class="play-icon">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                                    <polygon points="5,3 19,12 5,21"/>
-                                </svg>
-                            </span>
-                            <span class="play-text">Play Session</span>
+                    <div class="flex gap-2">
+                        <button id="btnShowAll" class="text-sm text-blue-600 hover:text-blue-700 hidden">
+                            Show All
                         </button>
-                        <button id="btnPlayAll" class="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                                <polygon points="5,3 19,12 5,21"/>
-                            </svg>
-                            Play All
+                        <button id="btnShowLess" class="text-sm text-gray-600 hover:text-gray-700 hidden">
+                            Show Recent
                         </button>
                         <button id="btnClearAll" class="text-sm text-red-600 hover:text-red-700">
                             Clear All
@@ -199,44 +228,63 @@
                     </div>
                 </div>
                 
-                <!-- Playback Mode Info -->
-                <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-sm">
-                    <div class="flex items-start gap-2">
-                        <span class="text-blue-600 mt-0.5">ℹ️</span>
-                        <div>
-                            <strong class="text-blue-900">Dual Playback Modes:</strong>
-                            <div class="text-blue-700 mt-1">
-                                • <strong>Play Session:</strong> Continuous playback of all chunks as one audio file<br>
-                                • <strong>Play All:</strong> Sequential playback with gaps between chunks<br>
-                                • <strong>Individual chunks:</strong> Click any chunk's play button for isolated playback
+                <!-- Unified Player Controls -->
+                <div id="unifiedPlayer" class="hidden mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                    <div class="flex items-center gap-4 mb-3">
+                        <!-- Main Play/Pause -->
+                        <button id="mainPlayPause" class="w-12 h-12 bg-blue-600 text-white rounded-full hover:bg-blue-700 flex items-center justify-center transition-all shadow-lg">
+                            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+                                <path id="playIcon" d="M8 5v14l11-7z"/>
+                                <path id="pauseIcon" class="hidden" d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+                            </svg>
+                        </button>
+                        
+                        <!-- Track controls -->
+                        <div class="flex items-center gap-2">
+                            <button id="prevChunk" class="text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+                                </svg>
+                            </button>
+                            <button id="nextChunk" class="text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        <!-- Current track info -->
+                        <div class="flex-1">
+                            <div class="text-sm font-medium text-gray-700" id="currentTrackInfo">Ready to play</div>
+                            <div class="text-xs text-gray-500" id="currentTrackStatus">0 chunks available</div>
+                        </div>
+                        
+                        <!-- Volume control (hidden on mobile) -->
+                        <div class="hidden sm:flex items-center gap-2">
+                            <svg class="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M3 9v6h4l5 5V4L7 9H3z"/>
+                            </svg>
+                            <input type="range" id="volumeControl" min="0" max="100" value="80" class="w-20">
+                        </div>
+                    </div>
+                    
+                    <!-- Progress bar -->
+                    <div class="relative">
+                        <div class="w-full bg-gray-200 rounded-full h-2 cursor-pointer" id="progressBar">
+                            <div id="progressFill" class="bg-blue-600 h-2 rounded-full transition-all relative" style="width: 0%">
+                                <div class="absolute right-0 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-white border-2 border-blue-600 rounded-full shadow-sm"></div>
                             </div>
                         </div>
+                        <div class="flex justify-between text-xs text-gray-500 mt-1">
+                            <span id="currentTime">0:00</span>
+                            <span id="totalTime">0:00</span>
+                        </div>
                     </div>
                 </div>
                 
-                <div id="chunksContainer" class="space-y-3 max-h-[500px] overflow-y-auto">
-                    <div id="emptyState" class="text-center text-slate-400 py-12">
-                        <div class="text-6xl mb-4">🎙️</div>
-                        <div class="text-lg font-medium mb-2">Ready to Record</div>
-                        <div class="text-sm">Click "Start" to begin recording audio chunks</div>
-                    </div>
-                </div>
-                
-                <!-- Session Summary -->
-                <div id="sessionSummary" class="mt-4 pt-4 border-t hidden">
-                    <div class="grid grid-cols-3 gap-4 text-center">
-                        <div>
-                            <div class="text-sm text-slate-500">Total Duration</div>
-                            <div id="totalDuration" class="font-semibold">00:00</div>
-                        </div>
-                        <div>
-                            <div class="text-sm text-slate-500">Upload Status</div>
-                            <div id="uploadSummary" class="font-semibold">0/0 uploaded</div>
-                        </div>
-                        <div>
-                            <div class="text-sm text-slate-500">Total Size</div>
-                            <div id="totalSize" class="font-semibold">0 MB</div>
-                        </div>
+                <div id="recordingsList" class="space-y-2 max-h-[400px] overflow-y-auto">
+                    <div id="emptyState" class="text-center text-slate-400 py-8">
+                        No recordings yet. Click "Start" to begin recording.
                     </div>
                 </div>
             </section>
@@ -309,33 +357,45 @@
         // Import modules
         import { createRecorderBox } from './js/recorder-box.js';
         import { createS3Storage } from './js/storage-s3.js';
-        import { ChunkPlayer } from './js/chunk-player.js';
 
         // Initialize recorder
         let recorder = null;
         let storage = null;
         let currentSessionId = null;
         const recordings = [];
-        const chunkPlayer = new ChunkPlayer();
-        const chunkBlobs = new Map(); // Store WAV blobs for playback
-        let renderTimeout = null; // Debounce rendering
 
         async function initializeRecorder() {
             try {
+                log('Starting recorder initialization...');
+                
+                // Check if modules are available
+                if (typeof createS3Storage === 'undefined') {
+                    log('ERROR: createS3Storage module not loaded');
+                    return;
+                }
+                if (typeof createRecorderBox === 'undefined') {
+                    log('ERROR: createRecorderBox module not loaded');
+                    return;
+                }
+                
                 // Create S3 storage adapter
+                log('Creating S3 storage adapter...');
                 storage = await createS3Storage({
                     apiUrl: config.audioApiUrl,
                     getAuthToken: getAuthToken,
-                    getUserId: () => user.userId,
+                    getUserId: () => user?.userId,
                     enableLocalBackup: true
                 });
+                log('S3 storage created successfully');
 
                 // Create recorder with S3 storage
+                log('Creating recorder...');
                 recorder = await createRecorderBox({
                     storage: storage,
                     chunkSeconds: parseInt(document.getElementById('chunkSeconds').value),
                     channels: 1
                 });
+                log('Recorder created successfully');
 
                 // Setup event listeners
                 recorder.on('status', ({ status }) => {
@@ -351,13 +411,18 @@
                 });
 
                 recorder.on('chunk', ({ size, index, wavBlob, uploaded }) => {
-                    console.log('🔧 [DEBUG] UI received chunk event:', { size, index, hasWavBlob: !!wavBlob, uploaded });
-                    log(`Chunk ${index} created: ${(size/1024).toFixed(1)} KB${uploaded ? ' - uploaded' : ''}`);
-                    addChunkToList(index, size, wavBlob, uploaded);
+                    log(`Chunk ${index} created: ${(size/1024).toFixed(1)} KB, uploaded: ${uploaded}`);
+                    // Create a blob URL for playback if we have the wav blob
+                    const blobUrl = wavBlob ? URL.createObjectURL(wavBlob) : null;
+                    if (blobUrl) {
+                        log(`Created blob URL for chunk ${index}: ${blobUrl.substring(0, 50)}...`);
+                    } else {
+                        log(`WARNING: No audio blob for chunk ${index}`);
+                    }
+                    addChunkToList(index, size, blobUrl, wavBlob);
                 });
 
                 recorder.on('stats', ({ durationMs, chunkCount, bytes }) => {
-                    console.log('🔧 [DEBUG] UI received stats event:', { durationMs, chunkCount, bytes });
                     document.getElementById('sessionDuration').textContent = formatTime(Math.floor(durationMs / 1000));
                     document.getElementById('sessionChunks').textContent = chunkCount;
                     document.getElementById('sessionSize').textContent = `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
@@ -411,21 +476,253 @@
             }
         }
 
+        // Player state management
+        let currentAudio = null;
+        let currentChunkIndex = -1;
+        let isPlaying = false;
+        let showAllChunks = false;
+        const MAX_VISIBLE_CHUNKS = 3;
+        
+        // Format time helper
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+        
+        // Update chunk visibility
+        function updateChunkVisibility() {
+            const chunkElements = document.querySelectorAll('.chunk-item');
+            const totalChunks = recordings.length;
+            
+            if (totalChunks <= MAX_VISIBLE_CHUNKS) {
+                // Show all if we have few chunks
+                chunkElements.forEach(el => el.classList.remove('hidden'));
+                document.getElementById('btnShowAll').classList.add('hidden');
+                document.getElementById('btnShowLess').classList.add('hidden');
+            } else {
+                // Show/hide based on state
+                chunkElements.forEach((el, index) => {
+                    if (showAllChunks) {
+                        el.classList.remove('hidden');
+                    } else {
+                        // Show only the last MAX_VISIBLE_CHUNKS
+                        const isRecent = index >= (totalChunks - MAX_VISIBLE_CHUNKS);
+                        el.classList.toggle('hidden', !isRecent);
+                    }
+                });
+                
+                // Update buttons
+                document.getElementById('btnShowAll').classList.toggle('hidden', showAllChunks);
+                document.getElementById('btnShowLess').classList.toggle('hidden', !showAllChunks);
+                document.getElementById('btnShowAll').textContent = `Show All (${totalChunks})`;
+            }
+            
+            // Update chunk count
+            document.getElementById('chunkCount').textContent = totalChunks;
+            
+            // Show/hide player
+            const player = document.getElementById('unifiedPlayer');
+            if (totalChunks > 0) {
+                player.classList.remove('hidden');
+                document.getElementById('currentTrackStatus').textContent = `${totalChunks} chunk${totalChunks !== 1 ? 's' : ''} available`;
+            } else {
+                player.classList.add('hidden');
+            }
+        }
+        
+        // Play specific chunk (make it global for onclick handlers)
+        window.playChunk = function(index) {
+            if (index < 0 || index >= recordings.length) {
+                log(`Cannot play chunk ${index}: out of range`);
+                return;
+            }
+            
+            const recording = recordings[index];
+            
+            if (!recording.url) {
+                log(`Cannot play chunk ${index}: no audio URL available`);
+                alert(`Chunk ${index + 1} audio is not available yet. It may still be uploading.`);
+                return;
+            }
+            
+            log(`Playing chunk ${index}: ${recording.url.substring(0, 50)}...`);
+            
+            // Stop current audio if playing
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.src = '';  // Clean up properly
+                currentAudio = null;
+            }
+            
+            currentChunkIndex = index;
+            
+            // Create audio element
+            try {
+                currentAudio = new Audio(recording.url);
+                currentAudio.volume = document.getElementById('volumeControl').value / 100;
+            
+            // Update UI
+            document.getElementById('currentTrackInfo').textContent = `Playing Chunk ${index + 1}`;
+            document.getElementById('playIcon').classList.add('hidden');
+            document.getElementById('pauseIcon').classList.remove('hidden');
+            isPlaying = true;
+            
+            // Update chunk items
+            document.querySelectorAll('.chunk-item').forEach((el, i) => {
+                el.classList.toggle('playing', i === index);
+            });
+            
+            // Update progress
+            currentAudio.addEventListener('timeupdate', () => {
+                const progress = (currentAudio.currentTime / currentAudio.duration) * 100;
+                document.getElementById('progressFill').style.width = `${progress}%`;
+                document.getElementById('currentTime').textContent = formatTime(currentAudio.currentTime);
+                document.getElementById('totalTime').textContent = formatTime(currentAudio.duration || 0);
+            });
+            
+            // Handle end of chunk
+            currentAudio.addEventListener('ended', () => {
+                // Auto-play next chunk if available
+                if (currentChunkIndex < recordings.length - 1) {
+                    playChunk(currentChunkIndex + 1);
+                } else {
+                    // End of all chunks
+                    stopPlayback();
+                }
+            });
+            
+            // Handle errors
+            currentAudio.addEventListener('error', (e) => {
+                log(`Error playing chunk ${index + 1}: ${e.message}`);
+                stopPlayback();
+            });
+            
+            currentAudio.play().catch(e => {
+                log(`Failed to play chunk: ${e.message}`);
+                stopPlayback();
+            });
+            
+            // Update nav buttons
+            document.getElementById('prevChunk').disabled = index === 0;
+            document.getElementById('nextChunk').disabled = index === recordings.length - 1;
+            
+            } catch (error) {
+                log(`Error creating audio element: ${error.message}`);
+                alert(`Failed to play audio: ${error.message}`);
+                stopPlayback();
+            }
+        }
+        
+        // Stop playback
+        function stopPlayback() {
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio = null;
+            }
+            
+            isPlaying = false;
+            currentChunkIndex = -1;
+            
+            // Update UI
+            document.getElementById('playIcon').classList.remove('hidden');
+            document.getElementById('pauseIcon').classList.add('hidden');
+            document.getElementById('currentTrackInfo').textContent = 'Ready to play';
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('currentTime').textContent = '0:00';
+            document.getElementById('totalTime').textContent = '0:00';
+            
+            // Remove playing state from chunks
+            document.querySelectorAll('.chunk-item').forEach(el => {
+                el.classList.remove('playing');
+            });
+        }
+        
+        // Player controls
+        document.getElementById('mainPlayPause').addEventListener('click', () => {
+            if (isPlaying && currentAudio) {
+                // Pause
+                currentAudio.pause();
+                isPlaying = false;
+                document.getElementById('playIcon').classList.remove('hidden');
+                document.getElementById('pauseIcon').classList.add('hidden');
+            } else if (!isPlaying && currentAudio) {
+                // Resume
+                currentAudio.play();
+                isPlaying = true;
+                document.getElementById('playIcon').classList.add('hidden');
+                document.getElementById('pauseIcon').classList.remove('hidden');
+            } else {
+                // Start playing from beginning
+                playChunk(0);
+            }
+        });
+        
+        document.getElementById('prevChunk').addEventListener('click', () => {
+            if (currentChunkIndex > 0) {
+                playChunk(currentChunkIndex - 1);
+            }
+        });
+        
+        document.getElementById('nextChunk').addEventListener('click', () => {
+            if (currentChunkIndex < recordings.length - 1) {
+                playChunk(currentChunkIndex + 1);
+            }
+        });
+        
+        // Volume control
+        document.getElementById('volumeControl').addEventListener('input', (e) => {
+            if (currentAudio) {
+                currentAudio.volume = e.target.value / 100;
+            }
+        });
+        
+        // Progress bar click to seek
+        document.getElementById('progressBar').addEventListener('click', (e) => {
+            if (!currentAudio) return;
+            
+            const rect = e.currentTarget.getBoundingClientRect();
+            const percent = (e.clientX - rect.left) / rect.width;
+            currentAudio.currentTime = percent * currentAudio.duration;
+        });
+        
+        // Show/hide controls
+        document.getElementById('btnShowAll').addEventListener('click', () => {
+            showAllChunks = true;
+            updateChunkVisibility();
+        });
+        
+        document.getElementById('btnShowLess').addEventListener('click', () => {
+            showAllChunks = false;
+            updateChunkVisibility();
+        });
+
         // Recording controls
         document.getElementById('btnStart').addEventListener('click', async () => {
-            currentSessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
-            document.getElementById('sessionId').textContent = currentSessionId;
-            
-            // Clear previous session
-            chunkPlayer.stopAll();
-            recordings.length = 0;
-            chunkBlobs.clear();
-            debouncedRenderChunks();
-            
-            const result = await recorder.start();
-            if (result.recordingId) {
-                currentSessionId = result.recordingId;
+            try {
+                if (!recorder) {
+                    log('ERROR: Recorder not initialized, attempting to initialize...');
+                    await initializeRecorder();
+                    if (!recorder) {
+                        alert('Failed to initialize recorder. Please refresh the page and try again.');
+                        return;
+                    }
+                }
+                
+                currentSessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
                 document.getElementById('sessionId').textContent = currentSessionId;
+                document.getElementById('recordingsList').innerHTML = '';
+                recordings.length = 0;
+                updateChunkVisibility();
+                
+                const result = await recorder.start();
+                if (result && result.recordingId) {
+                    currentSessionId = result.recordingId;
+                    document.getElementById('sessionId').textContent = currentSessionId;
+                }
+            } catch (error) {
+                log(`ERROR starting recording: ${error.message}`);
+                alert(`Failed to start recording: ${error.message}`);
             }
         });
 
@@ -476,127 +773,76 @@
             document.getElementById('timer').textContent = '00:00';
         }
 
-        // Helper functions
-        function formatTime(seconds) {
-            const mins = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        }
+        // Helper functions (formatTime already defined above)
 
-        function addChunkToList(index, size, wavBlob = null, uploadSuccess = false) {
-            console.log('🔧 [DEBUG] addChunkToList called:', { index, size, currentSessionId, uploadSuccess });
-            
+        function addChunkToList(index, size, blobUrl, audioBlob) {
             const recording = {
                 id: `${currentSessionId}-chunk-${index}`,
                 index: index,
                 size: size,
                 timestamp: new Date(),
-                status: uploadSuccess ? 'uploaded' : 'uploading',
-                wavBlob: wavBlob
+                status: 'uploading',
+                url: blobUrl,  // Store the blob URL for playback
+                blob: audioBlob,  // Store the actual blob
+                duration: 0  // Will be updated when we can read it
             };
             
+            // Try to get duration if we have an audio blob
+            if (audioBlob && blobUrl) {
+                const tempAudio = new Audio(blobUrl);
+                tempAudio.addEventListener('loadedmetadata', () => {
+                    recording.duration = Math.round(tempAudio.duration);
+                    renderRecordingsList();
+                });
+            }
+            
             recordings.push(recording);
+            renderRecordingsList();
             
-            // Store WAV blob for playback if available
-            if (wavBlob) {
-                chunkBlobs.set(recording.id, wavBlob);
-            }
-            
-            console.log('🔧 [DEBUG] Recordings array now has', recordings.length, 'items');
-            console.log('🔧 [DEBUG] Recording details:', recording);
-            debouncedRenderChunks();
+            // Update status when upload completes
+            setTimeout(() => {
+                recording.status = 'uploaded';
+                renderRecordingsList();
+            }, 2000);
         }
 
-        // Debounced rendering to prevent race conditions
-        function debouncedRenderChunks() {
-            if (renderTimeout) {
-                clearTimeout(renderTimeout);
-            }
-            renderTimeout = setTimeout(() => {
-                renderChunksInterface();
-                renderTimeout = null;
-            }, 50); // 50ms debounce
-        }
-
-        function renderChunksInterface() {
-            const container = document.getElementById('chunksContainer');
-            const emptyState = document.getElementById('emptyState');
-            const sessionSummary = document.getElementById('sessionSummary');
-            const chunkCounter = document.getElementById('chunkCounter');
-            
-            // Safety checks for all DOM elements
-            if (!container) return;
-            if (chunkCounter) chunkCounter.textContent = recordings.length;
+        function renderRecordingsList() {
+            const container = document.getElementById('recordingsList');
             
             if (recordings.length === 0) {
-                if (emptyState) emptyState.style.display = 'block';
-                if (sessionSummary) sessionSummary.classList.add('hidden');
+                container.innerHTML = `
+                    <div id="emptyState" class="text-center text-slate-400 py-8">
+                        No recordings yet. Click "Start" to begin recording.
+                    </div>
+                `;
+                document.getElementById('unifiedPlayer').classList.add('hidden');
                 return;
             }
             
-            if (emptyState) emptyState.style.display = 'none';
-            if (sessionSummary) {
-                try {
-                    sessionSummary.classList.remove('hidden');
-                } catch (e) {
-                    console.warn('Failed to update sessionSummary visibility:', e);
-                }
-            }
-            
-            // Render chunks
-            console.log('🔧 [DEBUG] Rendering chunks:', recordings.map(r => ({ index: r.index, id: r.id, status: r.status })));
-            container.innerHTML = recordings.map(rec => `
-                <div class="chunk-item border border-slate-200 rounded-lg p-4 bg-slate-50" data-chunk-id="${rec.id}">
+            container.innerHTML = recordings.map((rec, index) => `
+                <div class="chunk-item relative p-3 bg-gray-50 rounded-lg border border-gray-200 transition-all hover:bg-gray-100" data-index="${index}">
+                    <div class="chunk-indicator"></div>
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <button class="play-button w-10 h-10 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center transition-colors" 
-                                    title="Play chunk" data-chunk-id="${rec.id}">
-                                <span class="play-icon">${chunkPlayer.getPlayIcon()}</span>
+                            <button class="chunk-play-btn w-8 h-8 bg-blue-500 text-white rounded-full hover:bg-blue-600 flex items-center justify-center text-sm" onclick="playChunk(${index})">
+                                ▶
                             </button>
                             <div>
-                                <div class="font-medium text-slate-900">Chunk ${rec.index + 1}</div>
-                                <div class="text-sm text-slate-500">
-                                    ${rec.timestamp.toLocaleTimeString()} • ${(rec.size/1024).toFixed(1)} KB
+                                <div class="font-medium text-sm">Chunk ${rec.index + 1}</div>
+                                <div class="text-xs text-slate-500">
+                                    ${rec.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} • ${rec.duration || '---'}s • ${(rec.size/1024).toFixed(1)} KB
                                 </div>
                             </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <div class="upload-status" title="${rec.status}">
-                                ${chunkPlayer.getUploadStatusIcon(rec.status)}
-                            </div>
-                            <div class="text-xs text-slate-500 capitalize">${rec.status}</div>
+                        <div class="upload-badge ${getUploadClass(rec.status)}">
+                            ${getUploadIcon(rec.status)} ${rec.status}
                         </div>
                     </div>
                 </div>
             `).join('');
             
-            // Add click handlers for play buttons
-            container.querySelectorAll('.play-button').forEach(button => {
-                button.addEventListener('click', async (e) => {
-                    e.preventDefault();
-                    const chunkId = button.dataset.chunkId;
-                    const wavBlob = chunkBlobs.get(chunkId);
-                    
-                    if (wavBlob) {
-                        await chunkPlayer.playChunk(wavBlob, chunkId);
-                    } else {
-                        console.warn('No WAV blob found for chunk:', chunkId);
-                        // Could implement download from S3 here if needed
-                    }
-                });
-            });
-            
-            updateSessionSummary();
-        }
-
-        function updateSessionSummary() {
-            const totalDuration = recordings.reduce((sum, rec) => sum + (rec.size / (1024 * 120)), 0); // Rough estimate
-            const uploadedCount = recordings.filter(rec => rec.status === 'uploaded').length;
-            const totalSize = recordings.reduce((sum, rec) => sum + rec.size, 0);
-            
-            document.getElementById('totalDuration').textContent = formatTime(Math.round(totalDuration));
-            document.getElementById('uploadSummary').textContent = `${uploadedCount}/${recordings.length} uploaded`;
-            document.getElementById('totalSize').textContent = `${(totalSize / (1024 * 1024)).toFixed(2)} MB`;
+            // Update visibility and player
+            updateChunkVisibility();
         }
 
         function getUploadClass(status) {
@@ -617,68 +863,11 @@
             }
         }
 
-        // Play Session functionality (continuous WAV playback)
-        document.getElementById('btnPlaySession').addEventListener('click', async () => {
-            if (recordings.length === 0) return;
-            
-            if (chunkPlayer.isPlayingSession) {
-                chunkPlayer.stopSession();
-                return;
-            }
-            
-            log('Playing session continuously...');
-            
-            // Collect all WAV blobs in order
-            const sessionBlobs = recordings
-                .sort((a, b) => a.index - b.index)
-                .map(rec => chunkBlobs.get(rec.id))
-                .filter(blob => blob); // Remove any missing blobs
-            
-            if (sessionBlobs.length === 0) {
-                log('No WAV blobs available for session playback');
-                return;
-            }
-            
-            const result = await chunkPlayer.playSession(sessionBlobs, currentSessionId);
-            
-            if (result.success) {
-                log(`Session playback started - duration: ${result.duration?.toFixed(1)}s`);
-            } else {
-                log(`Session playback failed: ${result.error}`);
-            }
-        });
-
-        // Play All functionality (sequential chunk playback)
-        document.getElementById('btnPlayAll').addEventListener('click', async () => {
-            if (recordings.length === 0) return;
-            
-            log('Playing all chunks in sequence...');
-            chunkPlayer.stopAll(); // Stop any current playback
-            
-            for (let i = 0; i < recordings.length; i++) {
-                const recording = recordings[i];
-                const wavBlob = chunkBlobs.get(recording.id);
-                
-                if (wavBlob) {
-                    console.log(`Playing chunk ${i + 1}/${recordings.length}`);
-                    await new Promise((resolve) => {
-                        const audio = new Audio(URL.createObjectURL(wavBlob));
-                        audio.addEventListener('ended', resolve);
-                        audio.addEventListener('error', resolve);
-                        audio.play();
-                    });
-                }
-            }
-            log('Finished playing all chunks');
-        });
-
         // Clear all recordings
         document.getElementById('btnClearAll').addEventListener('click', () => {
             if (confirm('Clear all recordings from this session?')) {
-                chunkPlayer.stopAll(); // Stop any playing audio
                 recordings.length = 0;
-                chunkBlobs.clear();
-                debouncedRenderChunks();
+                renderRecordingsList();
                 log('Cleared all recordings');
             }
         });

@@ -66,7 +66,7 @@ module.exports.uploadChunk = async (event) => {
     const paddedChunkNumber = chunkNumber.toString().padStart(3, '0');
     
     // Build S3 key with user isolation
-    const s3Key = `users/${userId}/audio/sessions/${timestamp}-${sanitizedSessionId}/chunk-${paddedChunkNumber}.webm`;
+    const s3Key = `users/${userId}/audio/sessions/${timestamp}-${sanitizedSessionId}/chunk-${paddedChunkNumber}.wav`;
     
     console.log(`Generating upload URL for chunk ${chunkNumber} of session ${sanitizedSessionId}`);
 
@@ -83,8 +83,8 @@ module.exports.uploadChunk = async (event) => {
     // Publish EventBridge event for audio upload
     try {
       const fileSize = body.fileSize || 0;
-      const fileName = `chunk-${paddedChunkNumber}.webm`;
-      const eventId = await createUploadEvent(userId, email, fileName, s3Key, 'audio/webm', fileSize);
+      const fileName = `chunk-${paddedChunkNumber}.wav`;
+      const eventId = await createUploadEvent(userId, email, fileName, s3Key, 'audio/wav', fileSize);
       console.log(`Published audio upload event with ID: ${eventId}`);
     } catch (eventError) {
       // Don't fail the upload if event publishing fails
@@ -353,7 +353,7 @@ module.exports.getFailedChunks = async (event) => {
     const existingChunks = (s3Response.Contents || [])
       .filter(obj => obj.Key.includes('chunk-'))
       .map(obj => {
-        const match = obj.Key.match(/chunk-(\d+)\.webm$/);
+        const match = obj.Key.match(/chunk-(\d+)\.wav$/);
         return match ? parseInt(match[1]) : null;
       })
       .filter(num => num !== null);

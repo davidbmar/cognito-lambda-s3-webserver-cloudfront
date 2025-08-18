@@ -454,7 +454,7 @@
             
             // Filter for audio sessions
             const audioFiles = data.files
-                .filter(file => file.key.includes('/audio/sessions/') && file.key.endsWith('.webm'))
+                .filter(file => file.key.includes('/audio/sessions/') && (file.key.endsWith('.wav') || file.key.endsWith('.webm')))
                 .map(file => parseSessionFromS3Key(file));
 
             // Group by session ID
@@ -524,12 +524,12 @@
     }
 
     function parseSessionFromS3Key(file) {
-        // Parse: users/{userId}/audio/sessions/{date}-{sessionId}/chunk-{num}.webm
+        // Parse: users/{userId}/audio/sessions/{date}-{sessionId}/chunk-{num}.(wav|webm)
         const keyParts = file.key.split('/');
         const sessionFolder = keyParts[keyParts.length - 2];
         const fileName = keyParts[keyParts.length - 1];
         
-        const chunkMatch = fileName.match(/chunk-(\d+)\.webm/);
+        const chunkMatch = fileName.match(/chunk-(\d+)\.(wav|webm)/);
         const chunkNumber = chunkMatch ? parseInt(chunkMatch[1]) : 0;
         
         const dateMatch = sessionFolder.match(/^(\d{4}-\d{2}-\d{2})/);

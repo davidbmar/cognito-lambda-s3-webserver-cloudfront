@@ -183,17 +183,31 @@ The File Manager includes a "New Folder" button with full modal functionality:
 
 ## S3 Screenshot Download Utility
 
-For debugging and reviewing user screenshots, use the provided Python script:
+**IMPORTANT**: When asked to download or review a screenshot from S3, always use the `download-s3-file.py` Python script located in the project directory.
 
 ### Download Script Usage
 ```bash
-# Download a screenshot by partial filename match
-python3 download-s3-file.py "12.33.41" --download-dir "/path/to/download"
+# Standard usage - download by partial filename match
+python3 download-s3-file.py "9.18.54" --bucket dbm-cf-2-web --download-dir /tmp
+
+# Download latest/most recent file
+python3 download-s3-file.py "latest" --bucket dbm-cf-2-web --download-dir /tmp
+
+# Search for any screenshot
+python3 download-s3-file.py "screenshot" --bucket dbm-cf-2-web --download-dir /tmp
 
 # The script will:
 # 1. Search for files matching the pattern in user S3 buckets
-# 2. Download the file to the specified directory
+# 2. Download the file to the specified directory  
 # 3. Verify the download with file size and type information
+```
+
+### Viewing Downloaded Screenshots
+After downloading with the script, use the Read tool to view the image:
+```bash
+# Example workflow:
+1. python3 download-s3-file.py "9.18.54" --bucket dbm-cf-2-web --download-dir /tmp
+2. Use Read tool on: /tmp/Screenshot*.png
 ```
 
 ### Prerequisites
@@ -201,17 +215,15 @@ python3 download-s3-file.py "12.33.41" --download-dir "/path/to/download"
 - Python 3 with boto3 library
 - S3 bucket access permissions
 
-### Example
-```bash
-# Download the debug screenshot
-python3 download-s3-file.py "Screenshot 2025-07-27 at 12.33.41 AM.png" --download-dir "."
-
-# This will download to: ./Screenshot 2025-07-27 at 12.33.41 AM.png
-```
+### Common S3 Buckets for Screenshots
+- `dbm-cf-2-web` - Main web application bucket with user screenshots
+- Check bucket list with: `aws s3 ls`
 
 ### Script Features
-- **Fuzzy Search**: Finds files by partial name matching
+- **Fuzzy Search**: Finds files by partial name matching (time, date, or keyword)
+- **Special Keywords**: Use "latest" or "recent" to get the most recent file
 - **User Isolation**: Automatically searches within user directories
+- **Unicode Support**: Handles special characters in filenames
 - **Verification**: Confirms download success with file size validation
 - **Error Handling**: Provides clear error messages for common issues
 
