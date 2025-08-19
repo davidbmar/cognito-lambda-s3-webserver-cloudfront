@@ -143,6 +143,31 @@
       font-weight: 500;
     }
     .status-error { background: #fee2e2; color: #991b1b; }
+    
+    /* Auto-play indicator */
+    .auto-play-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0.5rem;
+      background: linear-gradient(45deg, #3b82f6, #1d4ed8);
+      color: white;
+      border-radius: 0.375rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      animation: pulse-glow 2s ease-in-out infinite;
+    }
+    
+    @keyframes pulse-glow {
+      0%, 100% { 
+        box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+        transform: scale(1);
+      }
+      50% { 
+        box-shadow: 0 0 16px rgba(59, 130, 246, 0.8);
+        transform: scale(1.02);
+      }
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -236,6 +261,8 @@
         <audio id="player" class="w-full" preload="metadata" controls></audio>
         <div class="mt-3 text-xs text-slate-500 bg-slate-50 rounded-lg p-3">
           💡 <strong>Tip:</strong> Select a session from the left to load audio and transcript. Click any word in the transcript to jump to that moment in the audio.
+          <br><br>
+          🎵 <strong>Auto-play:</strong> When a chunk ends, the next chunk will automatically start playing for continuous listening.
         </div>
       </div>
 
@@ -483,14 +510,7 @@
         // Player events
         elements.player.addEventListener('loadedmetadata', updateAudioUI);
         elements.player.addEventListener('timeupdate', updateProgress);
-        elements.player.addEventListener('ended', () => {
-            elements.playPause.textContent = '▶️ Play';
-            isPlaying = false;
-            // Auto-advance to next chunk if available
-            if (currentSession && currentChunkIndex < currentSession.chunks.length - 1) {
-                loadNextChunk();
-            }
-        });
+        elements.player.addEventListener('ended', handleAudioEnded);
 
         // Search
         elements.search.addEventListener('input', debounce(performSearch, 300));
@@ -1009,6 +1029,71 @@
     async function loadNextChunk() {
         if (currentSession && currentChunkIndex < currentSession.chunks.length - 1) {
             await loadChunkByIndex(currentChunkIndex + 1);
+        }
+    }
+
+    async function handleAudioEnded() {
+        console.log('🎵 Audio chunk ended, checking for auto-play next chunk...');
+        
+        // Reset play button
+        elements.playPause.textContent = '▶️ Play';
+        isPlaying = false;
+        
+        // Check if we have more chunks to play
+        if (currentSession && currentSession.chunks && currentChunkIndex < currentSession.chunks.length - 1) {
+            console.log(`🎵 Auto-playing next chunk: ${currentChunkIndex + 1} → ${currentChunkIndex + 2}`);
+            
+            // Show auto-play indicator
+            const originalChunkInfo = elements.chunkInfo.textContent;
+            elements.chunkInfo.innerHTML = `<span class="auto-play-indicator">🎵 Auto-playing next chunk...</span>`;
+            
+            // Load next chunk
+            await loadNextChunk();
+            
+            // Auto-play after a short delay to allow chunk to load
+            setTimeout(async () => {
+                if (elements.player.src && elements.player.readyState >= 2) {
+                    console.log('🎵 Starting auto-play of next chunk');
+                    try {
+                        await elements.player.play();
+                        elements.playPause.textContent = '⏸️ Pause';
+                        isPlaying = true;
+                        
+                        // Clear auto-play indicator and restore normal chunk info
+                        setTimeout(() => {
+                            updateChunkNavigation();
+                        }, 1000);
+                        
+                        // Switch to transcript tab on mobile if not already visible
+                        if (window.innerWidth <= 768) {
+                            const transcriptTab = document.querySelector('.mobile-tab[data-panel="transcript"]');
+                            if (transcriptTab && !transcriptTab.classList.contains('active')) {
+                                transcriptTab.click();
+                            }
+                        }
+                        
+                    } catch (error) {
+                        console.log('🎵 Auto-play failed, user interaction may be required:', error.message);
+                        // Restore normal chunk info on error
+                        updateChunkNavigation();
+                        // Don't throw error, just log it - browser may require user interaction for auto-play
+                    }
+                } else {
+                    console.log('🎵 Next chunk not ready for auto-play, skipping');
+                    // Restore normal chunk info if auto-play fails
+                    updateChunkNavigation();
+                }
+            }, 500); // 500ms delay to ensure chunk is loaded
+            
+        } else {
+            console.log('🎵 No more chunks to auto-play, playback complete');
+            
+            // Show completion message briefly
+            const originalText = elements.chunkInfo.textContent;
+            elements.chunkInfo.textContent = '✅ Playback complete';
+            setTimeout(() => {
+                elements.chunkInfo.textContent = originalText;
+            }, 3000);
         }
     }
 
@@ -1611,12 +1696,33 @@
 
     // Audio player functions
     function togglePlayPause() {
-        if (!elements.player.src) return;
+        if (!elements.player.src) {
+            // If no audio loaded, try to start from first chunk
+            if (currentSession && currentSession.chunks && currentSession.chunks.length > 0) {
+                console.log('🎵 Starting playback from first chunk');
+                loadChunkByIndex(0).then(() => {
+                    setTimeout(() => {
+                        if (elements.player.src) {
+                            elements.player.play().then(() => {
+                                elements.playPause.textContent = '⏸️ Pause';
+                                isPlaying = true;
+                            }).catch(error => {
+                                console.log('🎵 Failed to start playback:', error.message);
+                            });
+                        }
+                    }, 100);
+                });
+            }
+            return;
+        }
         
         if (elements.player.paused) {
-            elements.player.play();
-            elements.playPause.textContent = '⏸️ Pause';
-            isPlaying = true;
+            elements.player.play().then(() => {
+                elements.playPause.textContent = '⏸️ Pause';
+                isPlaying = true;
+            }).catch(error => {
+                console.log('🎵 Failed to play audio:', error.message);
+            });
         } else {
             elements.player.pause();
             elements.playPause.textContent = '▶️ Play';
