@@ -1594,20 +1594,38 @@
                     </div>
 
                     <!-- Audio Recorder Card -->
-                    <div class="dashboard-card" onclick="window.location.href='audio.html'">
+                    <div class="dashboard-card" onclick="window.location.href='audio-pcm.html'">
                         <div class="dashboard-card-icon">
                             <i class="fas fa-microphone"></i>
                         </div>
                         <h3>Audio Recorder</h3>
-                        <p>Record high-quality audio with automatic chunking and cloud upload</p>
+                        <p>Record high-quality WAV audio with automatic chunking and cloud upload</p>
                         <ul class="dashboard-features">
-                            <li><i class="fas fa-check"></i> Real-time audio recording</li>
+                            <li><i class="fas fa-check"></i> Real-time PCM audio recording</li>
                             <li><i class="fas fa-check"></i> Automatic S3 upload</li>
                             <li><i class="fas fa-check"></i> Mobile-optimized interface</li>
                         </ul>
                         <div class="dashboard-card-action">
                             <i class="fas fa-arrow-right"></i>
                             Start Recording
+                        </div>
+                    </div>
+
+                    <!-- Transcription Viewer Card -->
+                    <div class="dashboard-card" onclick="window.location.href='transcriptions.html'">
+                        <div class="dashboard-card-icon">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <h3>Transcription Viewer</h3>
+                        <p>View and interact with your audio transcriptions with real-time highlighting</p>
+                        <ul class="dashboard-features">
+                            <li><i class="fas fa-check"></i> Audio playback with word highlighting</li>
+                            <li><i class="fas fa-check"></i> Search and navigate transcripts</li>
+                            <li><i class="fas fa-check"></i> Auto-play next chunk feature</li>
+                        </ul>
+                        <div class="dashboard-card-action">
+                            <i class="fas fa-arrow-right"></i>
+                            View Transcriptions
                         </div>
                     </div>
                 </div>
@@ -1719,7 +1737,7 @@
                 </div>
                 
                 <!-- Navigation FAB - Audio Recorder (only in file manager) -->
-                <a href="/audio.html" class="nav-fab" title="Go to Audio Recorder">
+                <a href="/audio-pcm.html" class="nav-fab" title="Go to Audio Recorder">
                     <i class="fas fa-microphone"></i>
                 </a>
             </div>
