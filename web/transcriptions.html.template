@@ -142,7 +142,85 @@
       color: #1e40af !important;
       font-weight: 500;
     }
+    
+    /* Chunk progress bar */
+    .chunk-progress-container {
+      background: #f1f5f9;
+      border-radius: 0.5rem;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .chunk-progress-bar {
+      background: #e2e8f0;
+      border-radius: 9999px;
+      height: 8px;
+      position: relative;
+      overflow: hidden;
+    }
+    .chunk-progress-fill {
+      background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+      height: 100%;
+      border-radius: 9999px;
+      transition: width 0.3s ease;
+      position: relative;
+    }
+    .chunk-progress-fill::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      animation: shimmer 2s infinite;
+    }
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    .chunk-markers {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 0.5rem;
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+    .chunk-marker {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.125rem;
+    }
+    .chunk-marker.active {
+      color: #3b82f6;
+      font-weight: 600;
+    }
     .status-error { background: #fee2e2; color: #991b1b; }
+    
+    /* Auto-play indicator */
+    .auto-play-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0.5rem;
+      background: linear-gradient(45deg, #3b82f6, #1d4ed8);
+      color: white;
+      border-radius: 0.375rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      animation: pulse-glow 2s ease-in-out infinite;
+    }
+    
+    @keyframes pulse-glow {
+      0%, 100% { 
+        box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+        transform: scale(1);
+      }
+      50% { 
+        box-shadow: 0 0 16px rgba(59, 130, 246, 0.8);
+        transform: scale(1.02);
+      }
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800">
@@ -236,6 +314,8 @@
         <audio id="player" class="w-full" preload="metadata" controls></audio>
         <div class="mt-3 text-xs text-slate-500 bg-slate-50 rounded-lg p-3">
           💡 <strong>Tip:</strong> Select a session from the left to load audio and transcript. Click any word in the transcript to jump to that moment in the audio.
+          <br><br>
+          🎵 <strong>Auto-play:</strong> When a chunk ends, the next chunk will automatically start playing for continuous listening.
         </div>
       </div>
 
@@ -245,6 +325,19 @@
           <h3 class="font-semibold text-lg">📄 Transcript</h3>
           <div class="text-xs text-slate-500" id="stats"></div>
         </div>
+        
+        <!-- Chunk Progress Bar -->
+        <div id="chunkProgress" class="chunk-progress-container hidden">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium text-slate-700">Session Progress</span>
+            <span id="progressText" class="text-xs text-slate-500"></span>
+          </div>
+          <div class="chunk-progress-bar">
+            <div id="progressFillBar" class="chunk-progress-fill" style="width: 0%"></div>
+          </div>
+          <div id="chunkMarkers" class="chunk-markers"></div>
+        </div>
+        
         <div id="transcript" class="thin-scrollbar max-h-[55vh] overflow-auto">
           <div class="text-center py-12 text-slate-400">
             <div class="text-4xl mb-4">🎧</div>
@@ -411,7 +504,11 @@
         caseSensitive: document.getElementById('caseSensitive'),
         clearSpeaker: document.getElementById('clearSpeaker'),
         jumpToStart: document.getElementById('jumpToStart'),
-        shareTimestamp: document.getElementById('shareTimestamp')
+        shareTimestamp: document.getElementById('shareTimestamp'),
+        chunkProgress: document.getElementById('chunkProgress'),
+        progressFillBar: document.getElementById('progressFillBar'),
+        progressText: document.getElementById('progressText'),
+        chunkMarkers: document.getElementById('chunkMarkers')
     };
 
     // Initialize on page load
@@ -483,14 +580,7 @@
         // Player events
         elements.player.addEventListener('loadedmetadata', updateAudioUI);
         elements.player.addEventListener('timeupdate', updateProgress);
-        elements.player.addEventListener('ended', () => {
-            elements.playPause.textContent = '▶️ Play';
-            isPlaying = false;
-            // Auto-advance to next chunk if available
-            if (currentSession && currentChunkIndex < currentSession.chunks.length - 1) {
-                loadNextChunk();
-            }
-        });
+        elements.player.addEventListener('ended', handleAudioEnded);
 
         // Search
         elements.search.addEventListener('input', debounce(performSearch, 300));
@@ -903,8 +993,9 @@
             await loadChunkByIndex(0);
         }
         
-        // Update chunk navigation buttons
+        // Update chunk navigation buttons and progress bar
         updateChunkNavigation();
+        updateProgressBar();
 
         // Determine viewing mode and load accordingly
         if (session.transcriptType === 'complete') {
@@ -993,6 +1084,7 @@
         const chunk = currentSession.chunks[index];
         await loadAudioFromS3(chunk.s3Key);
         updateChunkNavigation();
+        updateProgressBar();
         
         // Update transcript highlighting for current chunk
         if (currentTranscript) {
@@ -1012,6 +1104,71 @@
         }
     }
 
+    async function handleAudioEnded() {
+        console.log('🎵 Audio chunk ended, checking for auto-play next chunk...');
+        
+        // Reset play button
+        elements.playPause.textContent = '▶️ Play';
+        isPlaying = false;
+        
+        // Check if we have more chunks to play
+        if (currentSession && currentSession.chunks && currentChunkIndex < currentSession.chunks.length - 1) {
+            console.log(`🎵 Auto-playing next chunk: ${currentChunkIndex + 1} → ${currentChunkIndex + 2}`);
+            
+            // Show auto-play indicator
+            const originalChunkInfo = elements.chunkInfo.textContent;
+            elements.chunkInfo.innerHTML = `<span class="auto-play-indicator">🎵 Auto-playing next chunk...</span>`;
+            
+            // Load next chunk
+            await loadNextChunk();
+            
+            // Auto-play after a short delay to allow chunk to load
+            setTimeout(async () => {
+                if (elements.player.src && elements.player.readyState >= 2) {
+                    console.log('🎵 Starting auto-play of next chunk');
+                    try {
+                        await elements.player.play();
+                        elements.playPause.textContent = '⏸️ Pause';
+                        isPlaying = true;
+                        
+                        // Clear auto-play indicator and restore normal chunk info
+                        setTimeout(() => {
+                            updateChunkNavigation();
+                        }, 1000);
+                        
+                        // Switch to transcript tab on mobile if not already visible
+                        if (window.innerWidth <= 768) {
+                            const transcriptTab = document.querySelector('.mobile-tab[data-panel="transcript"]');
+                            if (transcriptTab && !transcriptTab.classList.contains('active')) {
+                                transcriptTab.click();
+                            }
+                        }
+                        
+                    } catch (error) {
+                        console.log('🎵 Auto-play failed, user interaction may be required:', error.message);
+                        // Restore normal chunk info on error
+                        updateChunkNavigation();
+                        // Don't throw error, just log it - browser may require user interaction for auto-play
+                    }
+                } else {
+                    console.log('🎵 Next chunk not ready for auto-play, skipping');
+                    // Restore normal chunk info if auto-play fails
+                    updateChunkNavigation();
+                }
+            }, 500); // 500ms delay to ensure chunk is loaded
+            
+        } else {
+            console.log('🎵 No more chunks to auto-play, playback complete');
+            
+            // Show completion message briefly
+            const originalText = elements.chunkInfo.textContent;
+            elements.chunkInfo.textContent = '✅ Playback complete';
+            setTimeout(() => {
+                elements.chunkInfo.textContent = originalText;
+            }, 3000);
+        }
+    }
+
     function updateChunkNavigation() {
         if (!currentSession || !currentSession.chunks) {
             elements.prevChunk.disabled = true;
@@ -1026,6 +1183,56 @@
         elements.prevChunk.disabled = (currentChunkIndex === 0);
         elements.nextChunk.disabled = (currentChunkIndex === totalChunks - 1);
         elements.chunkInfo.textContent = `Chunk ${currentChunk} of ${totalChunks}`;
+    }
+
+    function updateProgressBar() {
+        if (!currentSession || !currentSession.chunks || currentSession.chunks.length === 0) {
+            elements.chunkProgress.classList.add('hidden');
+            return;
+        }
+        
+        elements.chunkProgress.classList.remove('hidden');
+        
+        const totalChunks = currentSession.chunks.length;
+        const progressPercent = ((currentChunkIndex + 1) / totalChunks) * 100;
+        
+        // Update progress bar
+        elements.progressFillBar.style.width = `${progressPercent}%`;
+        
+        // Update progress text
+        elements.progressText.textContent = `${currentChunkIndex + 1} of ${totalChunks} chunks`;
+        
+        // Update chunk markers
+        if (totalChunks <= 10) {
+            // Show individual chunk markers for small sessions
+            elements.chunkMarkers.innerHTML = Array.from({length: totalChunks}, (_, i) => {
+                const isActive = i === currentChunkIndex;
+                const chunkNum = i + 1;
+                return `
+                    <div class="chunk-marker ${isActive ? 'active' : ''}" onclick="loadChunkByIndex(${i})">
+                        <div class="w-2 h-2 rounded-full ${isActive ? 'bg-blue-600' : 'bg-slate-300'} cursor-pointer hover:bg-blue-400 transition-colors"></div>
+                        <span class="text-xs">${chunkNum}</span>
+                    </div>
+                `;
+            }).join('');
+        } else {
+            // Show start, current, and end markers for large sessions
+            const markers = [
+                { index: 0, label: '1', position: 0 },
+                { index: currentChunkIndex, label: `${currentChunkIndex + 1}`, position: progressPercent },
+                { index: totalChunks - 1, label: `${totalChunks}`, position: 100 }
+            ];
+            
+            elements.chunkMarkers.innerHTML = markers.map(marker => {
+                const isActive = marker.index === currentChunkIndex;
+                return `
+                    <div class="chunk-marker ${isActive ? 'active' : ''}" onclick="loadChunkByIndex(${marker.index})">
+                        <div class="w-2 h-2 rounded-full ${isActive ? 'bg-blue-600' : 'bg-slate-300'} cursor-pointer hover:bg-blue-400 transition-colors"></div>
+                        <span class="text-xs">${marker.label}</span>
+                    </div>
+                `;
+            }).join('');
+        }
     }
 
     async function loadTranscript(sessionId, type = 'complete') {
@@ -1272,30 +1479,32 @@
         
         if (convertedTranscript && convertedTranscript.paragraphs) {
             let html = convertedTranscript.paragraphs.map((para, paraIndex) => {
-                const speaker = para.speaker || 'Speaker';
-                const timestamp = para.start ? formatTime(para.start) : '0:00';
+                // Calculate continuous timestamp across all chunks
+                const chunkDuration = 5; // Assume 5 seconds per chunk
+                const baseTime = chunkIndex * chunkDuration;
+                const continuousTime = baseTime + (para.start || 0);
+                const timestamp = formatTime(continuousTime);
                 
                 let wordsHtml;
                 if (para.words && para.words.length > 0) {
-                    wordsHtml = para.words.map((word, wordIndex) => 
-                        `<span class="word" data-time="${word.t || 0}" data-para="${paraIndex}" data-word="${wordIndex}" title="Jump to ${formatTime(word.t || 0)}">${word.w || word.text || ''}</span>`
-                    ).join(' ');
+                    wordsHtml = para.words.map((word, wordIndex) => {
+                        const wordTime = baseTime + (word.t || 0);
+                        return `<span class="word" data-time="${wordTime}" data-para="${paraIndex}" data-word="${wordIndex}" title="Jump to ${formatTime(wordTime)}">${word.w || word.text || ''}</span>`;
+                    }).join(' ');
                 } else {
                     wordsHtml = para.text || para.content || 'No text available';
                 }
 
                 return `
-                    <div class="para mb-4 p-3 rounded-lg border-l-4 border-slate-200 hover:border-blue-300 transition-colors" data-para="${paraIndex}">
+                    <div class="para mb-3 p-3 rounded-lg border-l-2 border-slate-200 hover:border-blue-300 transition-colors" data-para="${paraIndex}">
                         <div class="flex items-center gap-2 text-xs text-slate-500 mb-2">
-                            <span class="font-medium bg-slate-100 px-2 py-1 rounded-full">${speaker}</span>
-                            <span class="font-mono cursor-pointer hover:text-blue-600" onclick="jumpToTime(${para.start || 0})" title="Jump to this time">
+                            <span class="font-mono cursor-pointer hover:text-blue-600 bg-slate-100 px-2 py-1 rounded" onclick="jumpToTime(${para.start || 0})" title="Jump to this time">
                                 📍 ${timestamp}
                             </span>
-                            <span class="bg-blue-100 px-2 py-1 rounded-full text-blue-700">
-                                Chunk ${chunkIndex + 1}
-                            </span>
+                            <span class="text-slate-400">•</span>
+                            <span class="text-slate-600">Chunk ${chunkIndex + 1}</span>
                         </div>
-                        <div class="text-sm leading-relaxed text-slate-700">${wordsHtml}</div>
+                        <div class="text-sm leading-relaxed text-slate-700 pl-2">${wordsHtml}</div>
                     </div>
                 `;
             }).join('');
@@ -1420,27 +1629,32 @@
         
         if (currentTranscript.paragraphs && currentTranscript.paragraphs.length > 0) {
             html = currentTranscript.paragraphs.map((para, paraIndex) => {
-                const speaker = para.speaker || 'Speaker';
-                const timestamp = para.start ? formatTime(para.start) : '0:00';
+                // Calculate continuous timestamp across all chunks
+                const chunkDuration = 5; // Assume 5 seconds per chunk
+                const baseTime = currentChunkIndex * chunkDuration;
+                const continuousTime = baseTime + (para.start || 0);
+                const timestamp = formatTime(continuousTime);
                 
                 let wordsHtml;
                 if (para.words && para.words.length > 0) {
-                    wordsHtml = para.words.map((word, wordIndex) => 
-                        `<span class="word" data-time="${word.t || 0}" data-para="${paraIndex}" data-word="${wordIndex}" title="Jump to ${formatTime(word.t || 0)}">${word.w || word.text || ''}</span>`
-                    ).join(' ');
+                    wordsHtml = para.words.map((word, wordIndex) => {
+                        const wordTime = baseTime + (word.t || 0);
+                        return `<span class="word" data-time="${wordTime}" data-para="${paraIndex}" data-word="${wordIndex}" title="Jump to ${formatTime(wordTime)}">${word.w || word.text || ''}</span>`;
+                    }).join(' ');
                 } else {
                     wordsHtml = para.text || para.content || 'No text available';
                 }
 
                 return `
-                    <div class="para mb-4 p-3 rounded-lg border-l-4 border-slate-200 hover:border-blue-300 transition-colors" data-para="${paraIndex}">
+                    <div class="para mb-3 p-3 rounded-lg border-l-2 border-slate-200 hover:border-blue-300 transition-colors" data-para="${paraIndex}">
                         <div class="flex items-center gap-2 text-xs text-slate-500 mb-2">
-                            <span class="font-medium bg-slate-100 px-2 py-1 rounded-full">${speaker}</span>
-                            <span class="font-mono cursor-pointer hover:text-blue-600" onclick="jumpToTime(${para.start || 0})" title="Jump to this time">
+                            <span class="font-mono cursor-pointer hover:text-blue-600 bg-slate-100 px-2 py-1 rounded" onclick="jumpToTime(${continuousTime})" title="Jump to this time">
                                 📍 ${timestamp}
                             </span>
+                            <span class="text-slate-400">•</span>
+                            <span class="text-slate-600">Chunk ${currentChunkIndex + 1}</span>
                         </div>
-                        <div class="text-sm leading-relaxed text-slate-700">${wordsHtml}</div>
+                        <div class="text-sm leading-relaxed text-slate-700 pl-2">${wordsHtml}</div>
                     </div>
                 `;
             }).join('');
@@ -1611,12 +1825,33 @@
 
     // Audio player functions
     function togglePlayPause() {
-        if (!elements.player.src) return;
+        if (!elements.player.src) {
+            // If no audio loaded, try to start from first chunk
+            if (currentSession && currentSession.chunks && currentSession.chunks.length > 0) {
+                console.log('🎵 Starting playback from first chunk');
+                loadChunkByIndex(0).then(() => {
+                    setTimeout(() => {
+                        if (elements.player.src) {
+                            elements.player.play().then(() => {
+                                elements.playPause.textContent = '⏸️ Pause';
+                                isPlaying = true;
+                            }).catch(error => {
+                                console.log('🎵 Failed to start playback:', error.message);
+                            });
+                        }
+                    }, 100);
+                });
+            }
+            return;
+        }
         
         if (elements.player.paused) {
-            elements.player.play();
-            elements.playPause.textContent = '⏸️ Pause';
-            isPlaying = true;
+            elements.player.play().then(() => {
+                elements.playPause.textContent = '⏸️ Pause';
+                isPlaying = true;
+            }).catch(error => {
+                console.log('🎵 Failed to play audio:', error.message);
+            });
         } else {
             elements.player.pause();
             elements.playPause.textContent = '▶️ Play';
