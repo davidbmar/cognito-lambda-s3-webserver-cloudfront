@@ -23,6 +23,66 @@
     .thin-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
     .thin-scrollbar { scrollbar-width: thin; }
     
+    /* Mobile-specific styles */
+    @media (max-width: 768px) {
+      .mobile-tab { 
+        flex: 1;
+        padding: 0.75rem 0.5rem;
+        text-align: center;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s;
+        font-size: 0.875rem;
+        font-weight: 500;
+      }
+      .mobile-tab.active {
+        border-bottom-color: #3b82f6;
+        color: #3b82f6;
+        background: rgba(59,130,246,.05);
+      }
+      .mobile-panel {
+        display: none !important;
+      }
+      .mobile-panel.active {
+        display: block !important;
+      }
+      /* Make audio player sticky on mobile */
+      .mobile-sticky-player {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 40;
+        background: white;
+        border-top: 1px solid #e2e8f0;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+      }
+      /* Adjust main content padding for sticky player */
+      body.has-sticky-player {
+        padding-bottom: 140px;
+      }
+      /* Larger touch targets on mobile */
+      .mobile-touch-target {
+        min-height: 44px;
+        min-width: 44px;
+      }
+      /* Responsive text sizes */
+      .session-item {
+        font-size: 0.875rem;
+      }
+      /* Hide desktop-only elements */
+      .desktop-only {
+        display: none !important;
+      }
+    }
+    @media (min-width: 769px) {
+      .mobile-only {
+        display: none !important;
+      }
+      .mobile-panel {
+        display: block !important;
+      }
+    }
+    
     /* Loading animation */
     .loading { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
     @keyframes pulse {
@@ -88,26 +148,30 @@
 <body class="bg-slate-50 text-slate-800">
   <!-- Top bar -->
   <header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-slate-200">
-    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-      <div class="text-xl font-semibold text-slate-800">🎤 Transcription Viewer</div>
-      <div class="ml-auto flex items-center gap-3">
-        <div id="userInfo" class="text-sm text-slate-600"></div>
+    <div class="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
+      <div class="flex items-center justify-between">
+        <div class="text-base sm:text-xl font-semibold text-slate-800">🎤 <span class="hidden sm:inline">Transcription Viewer</span><span class="sm:hidden">Transcripts</span></div>
         <div class="flex items-center gap-2">
-          <label class="text-sm text-slate-600">Speed</label>
-          <select id="rate" class="border rounded px-2 py-1 text-sm bg-white">
-            <option>0.75x</option><option selected>1.0x</option><option>1.25x</option>
-            <option>1.5x</option><option>1.75x</option><option>2.0x</option>
-          </select>
+          <div id="userInfo" class="hidden sm:block text-sm text-slate-600"></div>
+          <div class="desktop-only flex items-center gap-2">
+            <label class="text-sm text-slate-600">Speed</label>
+            <select id="rate" class="border rounded px-2 py-1 text-sm bg-white">
+              <option>0.75x</option><option selected>1.0x</option><option>1.25x</option>
+              <option>1.5x</option><option>1.75x</option><option>2.0x</option>
+            </select>
+          </div>
+          <button id="downloadJson" class="desktop-only text-sm px-3 py-1.5 rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50 transition-colors">
+            📥 Download
+          </button>
+          <button id="refreshSessions" class="text-sm px-2 sm:px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 transition-colors mobile-touch-target">
+            <span class="hidden sm:inline">🔄 Refresh</span>
+            <span class="sm:hidden">🔄</span>
+          </button>
+          <a href="/" class="text-sm px-2 sm:px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 transition-colors mobile-touch-target">
+            <span class="hidden sm:inline">🏠 Dashboard</span>
+            <span class="sm:hidden">🏠</span>
+          </a>
         </div>
-        <button id="downloadJson" class="text-sm px-3 py-1.5 rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50 transition-colors">
-          📥 Download
-        </button>
-        <button id="refreshSessions" class="text-sm px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 transition-colors">
-          🔄 Refresh
-        </button>
-        <a href="/" class="text-sm px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-100 transition-colors">
-          🏠 Dashboard
-        </a>
       </div>
     </div>
   </header>
@@ -124,10 +188,17 @@
     </div>
   </div>
 
+  <!-- Mobile Tab Navigation -->
+  <div id="mobileTabs" class="mobile-only flex border-b border-slate-200 bg-white sticky top-[44px] sm:top-[52px] z-20">
+    <button class="mobile-tab active" data-panel="sessions">Sessions</button>
+    <button class="mobile-tab" data-panel="transcript">Transcript</button>
+    <button class="mobile-tab" data-panel="details">Details</button>
+  </div>
+
   <!-- Main content -->
-  <main id="mainContent" class="max-w-7xl mx-auto px-4 py-4 grid grid-cols-12 gap-4">
+  <main id="mainContent" class="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-4 grid grid-cols-12 gap-4">
     <!-- Left: sessions / files -->
-    <aside class="col-span-12 lg:col-span-3">
+    <aside class="col-span-12 lg:col-span-3 mobile-panel active" data-panel-name="sessions">
       <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
         <div class="flex items-center justify-between mb-3">
           <h2 class="font-semibold text-lg">📅 Audio Sessions</h2>
@@ -143,15 +214,15 @@
     </aside>
 
     <!-- Center: player + transcript -->
-    <section class="col-span-12 lg:col-span-6 flex flex-col gap-4">
+    <section class="col-span-12 lg:col-span-6 flex flex-col gap-4 mobile-panel" data-panel-name="transcript">
       <!-- Audio Player -->
-      <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-        <div class="flex items-center gap-3 mb-3">
-          <button id="prevChunk" class="px-3 py-2 rounded-xl bg-slate-600 text-white hover:bg-slate-700 disabled:bg-slate-400 transition-colors font-medium" disabled>
+      <div class="bg-white border border-slate-200 rounded-2xl p-3 sm:p-4 shadow-sm md:relative fixed bottom-0 left-0 right-0 md:bottom-auto md:left-auto md:right-auto z-40 md:z-auto mobile-sticky-player md:mobile-sticky-player-reset">
+        <div class="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+          <button id="prevChunk" class="px-2 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-600 text-white hover:bg-slate-700 disabled:bg-slate-400 transition-colors font-medium mobile-touch-target" disabled>
             ⏮️
           </button>
-          <button id="playPause" class="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-400 transition-colors font-medium" disabled>
-            ▶️ Play
+          <button id="playPause" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-400 transition-colors font-medium mobile-touch-target" disabled>
+            ▶️ <span class="hidden sm:inline">Play</span>
           </button>
           <button id="nextChunk" class="px-3 py-2 rounded-xl bg-slate-600 text-white hover:bg-slate-700 disabled:bg-slate-400 transition-colors font-medium" disabled>
             ⏭️
@@ -185,7 +256,7 @@
     </section>
 
     <!-- Right: tools (search, speakers, info) -->
-    <aside class="col-span-12 lg:col-span-3">
+    <aside class="col-span-12 lg:col-span-3 mobile-panel" data-panel-name="details">
       <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm space-y-4">
         <!-- Search -->
         <div>
@@ -346,8 +417,60 @@
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', () => {
         setupEventListeners();
+        setupMobileTabs();
         checkAuthentication();
     });
+
+    function setupMobileTabs() {
+        const tabs = document.querySelectorAll('.mobile-tab');
+        const panels = document.querySelectorAll('.mobile-panel');
+        
+        if (tabs.length === 0) return; // Desktop view
+        
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Remove active from all tabs and panels
+                tabs.forEach(t => t.classList.remove('active'));
+                panels.forEach(p => p.classList.remove('active'));
+                
+                // Add active to clicked tab and corresponding panel
+                tab.classList.add('active');
+                const panelName = tab.getAttribute('data-panel');
+                const panel = document.querySelector(`.mobile-panel[data-panel-name="${panelName}"]`);
+                if (panel) {
+                    panel.classList.add('active');
+                }
+                
+                // If switching to transcript tab and we have audio, scroll to current playing position
+                if (panelName === 'transcript' && currentTranscript) {
+                    setTimeout(() => {
+                        const currentChunk = document.querySelector('.para.current-chunk');
+                        if (currentChunk) {
+                            currentChunk.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }, 100);
+                }
+            });
+        });
+        
+        // Add body class for sticky player padding on mobile
+        if (window.innerWidth <= 768) {
+            document.body.classList.add('has-sticky-player');
+        }
+        
+        // Handle resize events
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(() => {
+                if (window.innerWidth <= 768) {
+                    document.body.classList.add('has-sticky-player');
+                } else {
+                    document.body.classList.remove('has-sticky-player');
+                }
+            }, 250);
+        });
+    }
 
     function setupEventListeners() {
         // Audio controls
@@ -737,7 +860,7 @@
             const isActive = currentSession?.sessionId === session.sessionId;
             
             return `
-                <div class="session-item ${statusClass} ${isActive ? 'active' : ''} border rounded-xl p-3" 
+                <div class="session-item ${statusClass} ${isActive ? 'active' : ''} border rounded-xl p-3 sm:p-3 mobile-touch-target" 
                      onclick="selectSession('${session.sessionId}')">
                     <div class="flex items-start justify-between mb-2">
                         <div class="font-semibold text-sm">📅 ${formatDate(session.date)}</div>
