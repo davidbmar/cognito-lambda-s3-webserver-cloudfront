@@ -129,17 +129,24 @@
     .status-completed { background: #d1fae5; color: #065f46; }
     .status-partial { background: #dbeafe; color: #1e40af; animation: pulse 2s infinite; }
     
-    /* Current chunk highlighting */
+    /* Current chunk highlighting - subtle and consistent */
     .para.current-chunk {
-      background-color: #eff6ff !important;
+      background-color: #f8fafc !important;
       border-color: #3b82f6 !important;
       border-left-width: 4px !important;
-      transform: scale(1.02);
-      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.15);
+      box-shadow: 0 1px 3px rgba(59, 130, 246, 0.1);
       transition: all 0.3s ease;
     }
+    /* Ensure text color consistency - no blue text in chunks */
+    .para .text-slate-700,
     .para.current-chunk .text-slate-700 {
-      color: #1e40af !important;
+      color: #374151 !important;
+      font-weight: 400;
+    }
+    /* Preserve word highlighting visibility */
+    .para .word.active {
+      background: rgba(59,130,246,.4) !important;
+      color: white !important;
       font-weight: 500;
     }
     
@@ -1194,22 +1201,26 @@
         elements.chunkProgress.classList.remove('hidden');
         
         const totalChunks = currentSession.chunks.length;
-        const progressPercent = ((currentChunkIndex + 1) / totalChunks) * 100;
+        // Ensure currentChunkIndex is valid
+        const validChunkIndex = Math.max(0, Math.min(currentChunkIndex, totalChunks - 1));
+        const progressPercent = ((validChunkIndex + 1) / totalChunks) * 100;
+        
+        console.log(`🔍 Progress Bar Debug: currentChunkIndex=${currentChunkIndex}, validChunkIndex=${validChunkIndex}, totalChunks=${totalChunks}, progressPercent=${progressPercent}%`);
         
         // Update progress bar
         elements.progressFillBar.style.width = `${progressPercent}%`;
         
         // Update progress text
-        elements.progressText.textContent = `${currentChunkIndex + 1} of ${totalChunks} chunks`;
+        elements.progressText.textContent = `${validChunkIndex + 1} of ${totalChunks} chunks`;
         
         // Update chunk markers
         if (totalChunks <= 10) {
             // Show individual chunk markers for small sessions
             elements.chunkMarkers.innerHTML = Array.from({length: totalChunks}, (_, i) => {
-                const isActive = i === currentChunkIndex;
+                const isActive = i === validChunkIndex;
                 const chunkNum = i + 1;
                 return `
-                    <div class="chunk-marker ${isActive ? 'active' : ''}" onclick="loadChunkByIndex(${i})">
+                    <div class="chunk-marker ${isActive ? 'active' : ''}" onclick="loadChunkByTranscriptIndex(${i})">
                         <div class="w-2 h-2 rounded-full ${isActive ? 'bg-blue-600' : 'bg-slate-300'} cursor-pointer hover:bg-blue-400 transition-colors"></div>
                         <span class="text-xs">${chunkNum}</span>
                     </div>
@@ -1219,14 +1230,14 @@
             // Show start, current, and end markers for large sessions
             const markers = [
                 { index: 0, label: '1', position: 0 },
-                { index: currentChunkIndex, label: `${currentChunkIndex + 1}`, position: progressPercent },
+                { index: validChunkIndex, label: `${validChunkIndex + 1}`, position: progressPercent },
                 { index: totalChunks - 1, label: `${totalChunks}`, position: 100 }
             ];
             
             elements.chunkMarkers.innerHTML = markers.map(marker => {
-                const isActive = marker.index === currentChunkIndex;
+                const isActive = marker.index === validChunkIndex;
                 return `
-                    <div class="chunk-marker ${isActive ? 'active' : ''}" onclick="loadChunkByIndex(${marker.index})">
+                    <div class="chunk-marker ${isActive ? 'active' : ''}" onclick="loadChunkByTranscriptIndex(${marker.index})">
                         <div class="w-2 h-2 rounded-full ${isActive ? 'bg-blue-600' : 'bg-slate-300'} cursor-pointer hover:bg-blue-400 transition-colors"></div>
                         <span class="text-xs">${marker.label}</span>
                     </div>
@@ -1430,6 +1441,7 @@
         
         try {
             currentChunkIndex = transcriptIndex;
+            console.log(`🔍 Updated currentChunkIndex to: ${currentChunkIndex} for transcript ${transcriptIndex}`);
             
             // Load chunk audio
             const audioChunk = currentSession.chunks[transcriptIndex];
@@ -1456,6 +1468,7 @@
                 // Display this chunk's transcript
                 displayChunkTranscript(chunkTranscript, transcriptIndex);
                 updateChunkNavigation();
+                updateProgressBar(); // CRITICAL: Update progress bar after chunk index change
                 
                 console.log(`📄 Loaded chunk ${transcriptIndex + 1}/${currentSession.chunkTranscripts.length}`);
             } else {
@@ -1488,11 +1501,20 @@
                 let wordsHtml;
                 if (para.words && para.words.length > 0) {
                     wordsHtml = para.words.map((word, wordIndex) => {
-                        const wordTime = baseTime + (word.t || 0);
-                        return `<span class="word" data-time="${wordTime}" data-para="${paraIndex}" data-word="${wordIndex}" title="Jump to ${formatTime(wordTime)}">${word.w || word.text || ''}</span>`;
-                    }).join(' ');
+                        // For chunk mode, use the word time directly from the chunk transcript
+                        const wordTime = word.t || word.time || (wordIndex * 0.3);
+                        const cleanText = (word.w || word.text || '').trim();
+                        if (!cleanText) return '';
+                        return `<span class="word" data-time="${wordTime}" data-para="${paraIndex}" data-word="${wordIndex}" title="Jump to ${formatTime(wordTime)}">${cleanText}</span>`;
+                    }).filter(w => w).join(' ');
                 } else {
-                    wordsHtml = para.text || para.content || 'No text available';
+                    // Fallback: split text into words with estimated timing
+                    const text = para.text || para.content || 'No text available';
+                    const words = text.split(' ').filter(w => w.trim());
+                    wordsHtml = words.map((word, wordIndex) => {
+                        const estimatedTime = wordIndex * 0.3;
+                        return `<span class="word" data-time="${estimatedTime}" data-para="${paraIndex}" data-word="${wordIndex}" title="Jump to ${formatTime(estimatedTime)}">${word.trim()}</span>`;
+                    }).join(' ');
                 }
 
                 return `
@@ -1573,12 +1595,14 @@
     
     async function loadPreviousChunk() {
         if (currentChunkIndex > 0) {
+            console.log(`🎵 Loading previous chunk: ${currentChunkIndex} → ${currentChunkIndex - 1}`);
             await loadChunkByTranscriptIndex(currentChunkIndex - 1);
         }
     }
 
     async function loadNextChunk() {
         if (currentSession && currentChunkIndex < (currentSession.chunkTranscripts?.length - 1 || 0)) {
+            console.log(`🎵 Loading next chunk: ${currentChunkIndex} → ${currentChunkIndex + 1}`);
             await loadChunkByTranscriptIndex(currentChunkIndex + 1);
         }
     }
@@ -1698,69 +1722,122 @@
     }
 
     function highlightCurrentChunk() {
-        if (!currentTranscript || !currentSession || currentChunkIndex < 0) {
+        if (!currentSession || currentChunkIndex < 0) {
             return;
         }
         
-        // Calculate time range for current chunk (approximately 5 seconds per chunk)
-        const chunkDuration = 5.0; // seconds per chunk
-        const chunkStartTime = currentChunkIndex * chunkDuration;
-        const chunkEndTime = (currentChunkIndex + 1) * chunkDuration;
-        
-        // Remove existing highlighting
-        elements.transcript.querySelectorAll('.para').forEach(para => {
-            para.classList.remove('current-chunk');
-            para.style.backgroundColor = '';
-            para.style.borderColor = '';
-        });
-        
-        // Find and highlight paragraphs within current chunk time range
-        let foundCurrentChunk = false;
-        elements.transcript.querySelectorAll('.para').forEach(para => {
-            const paraIndex = parseInt(para.dataset.para);
-            if (currentTranscript.paragraphs && currentTranscript.paragraphs[paraIndex]) {
-                const paragraph = currentTranscript.paragraphs[paraIndex];
-                const paraStart = paragraph.start || 0;
-                const paraEnd = paragraph.end || (paragraph.start + 2); // fallback duration
-                
-                // Check if paragraph overlaps with current chunk
-                if ((paraStart >= chunkStartTime && paraStart < chunkEndTime) ||
-                    (paraEnd > chunkStartTime && paraEnd <= chunkEndTime) ||
-                    (paraStart <= chunkStartTime && paraEnd >= chunkEndTime)) {
-                    
-                    para.classList.add('current-chunk');
-                    para.style.backgroundColor = '#eff6ff'; // light blue background
-                    para.style.borderColor = '#3b82f6'; // blue border
-                    
-                    // Auto-scroll to first highlighted paragraph
-                    if (!foundCurrentChunk) {
-                        para.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        foundCurrentChunk = true;
-                    }
-                }
-            }
-        });
-        
-        // If no paragraphs found in time range, highlight by estimated position
-        if (!foundCurrentChunk && currentTranscript.paragraphs) {
-            const totalChunks = currentSession.chunks.length;
-            const paragraphsPerChunk = Math.ceil(currentTranscript.paragraphs.length / totalChunks);
-            const startParagraph = currentChunkIndex * paragraphsPerChunk;
-            const endParagraph = Math.min(startParagraph + paragraphsPerChunk, currentTranscript.paragraphs.length);
+        // If we have an audio player and it's playing, use real-time highlighting
+        if (elements.player && elements.player.src && !elements.player.paused) {
+            // Calculate actual time position in the transcript
+            let transcriptTime = 0;
             
-            for (let i = startParagraph; i < endParagraph; i++) {
-                const para = elements.transcript.querySelector(`[data-para="${i}"]`);
-                if (para) {
-                    para.classList.add('current-chunk');
-                    para.style.backgroundColor = '#eff6ff';
-                    para.style.borderColor = '#3b82f6';
+            // Check if we're in chunk mode (individual chunk transcripts) or complete transcript mode
+            const isChunkMode = currentSession.transcriptType === 'partial' || currentSession.chunkTranscripts;
+            
+            if (isChunkMode) {
+                // In chunk mode, we're viewing one chunk at a time
+                // Calculate the base time for the current chunk + current playback position
+                const chunkDuration = 5.0; // Assumed chunk duration
+                const baseTime = currentChunkIndex * chunkDuration;
+                transcriptTime = baseTime + elements.player.currentTime;
+                
+                console.log(`🎯 Chunk mode highlighting: chunkIndex=${currentChunkIndex}, baseTime=${baseTime}, playerTime=${elements.player.currentTime.toFixed(2)}, transcriptTime=${transcriptTime.toFixed(2)}`);
+            } else {
+                // Complete transcript mode - use cumulative time calculation
+                if (currentSession.chunks && currentSession.chunks.length > 0) {
+                    // Sort chunks to ensure proper order
+                    const sortedChunks = currentSession.chunks.slice().sort((a, b) => a.chunkNumber - b.chunkNumber);
                     
-                    if (i === startParagraph) {
-                        para.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Calculate cumulative time offset up to current chunk
+                    for (let i = 0; i < currentChunkIndex && i < sortedChunks.length; i++) {
+                        const chunk = sortedChunks[i];
+                        // Use actual chunk duration if available, otherwise estimate
+                        const chunkDuration = chunk.duration || chunk.metadata?.duration || 5.0;
+                        transcriptTime += chunkDuration;
                     }
+                    
+                    // Add current playback position within this chunk
+                    transcriptTime += elements.player.currentTime;
+                } else {
+                    // No chunk information, use direct playback time
+                    transcriptTime = elements.player.currentTime;
                 }
+                
+                console.log(`🎯 Complete mode highlighting: cumulative transcriptTime=${transcriptTime.toFixed(2)}`);
+            }
+            
+            // Use the existing word-level highlighting function (this will be smooth)
+            highlightCurrentWord(transcriptTime);
+            
+            // Set up chunk background highlighting ONCE if not already set
+            const currentPara = getCurrentChunkParagraph();
+            if (currentPara && !currentPara.classList.contains('current-chunk')) {
+                // Clear old chunk highlighting
+                elements.transcript.querySelectorAll('.para.current-chunk').forEach(para => {
+                    para.classList.remove('current-chunk');
+                    para.style.backgroundColor = '';
+                    para.style.borderColor = '';
+                });
+                
+                // Apply to current paragraph
+                currentPara.classList.add('current-chunk');
+                currentPara.style.backgroundColor = '#eff6ff';
+                currentPara.style.borderColor = '#3b82f6';
+            }
+            return;
+        }
+        
+        // Fallback: If no audio is playing, set static chunk highlighting
+        const currentPara = getCurrentChunkParagraph();
+        if (currentPara) {
+            // Clear old chunk highlighting only if needed
+            const existingChunkPara = elements.transcript.querySelector('.para.current-chunk');
+            if (existingChunkPara && existingChunkPara !== currentPara) {
+                existingChunkPara.classList.remove('current-chunk');
+                existingChunkPara.style.backgroundColor = '';
+                existingChunkPara.style.borderColor = '';
+            }
+            
+            // Apply highlighting to current chunk
+            if (!currentPara.classList.contains('current-chunk')) {
+                currentPara.classList.add('current-chunk');
+                currentPara.style.backgroundColor = '#eff6ff';
+                currentPara.style.borderColor = '#3b82f6';
+                currentPara.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
         }
+    }
+
+    function getCurrentChunkParagraph() {
+        // Find the paragraph that corresponds to the current chunk
+        // Look for chunk indicators or estimate based on currentChunkIndex
+        
+        // First try to find by chunk indicator text
+        let currentPara = null;
+        elements.transcript.querySelectorAll('.para').forEach(para => {
+            const chunkIndicator = para.querySelector('.text-slate-600');
+            if (chunkIndicator) {
+                const indicatorText = chunkIndicator.textContent;
+                if (indicatorText.includes(`Chunk ${currentChunkIndex + 1}`)) {
+                    currentPara = para;
+                }
+            }
+        });
+        
+        if (currentPara) {
+            return currentPara;
+        }
+        
+        // Fallback: estimate based on paragraph position
+        const allParas = elements.transcript.querySelectorAll('.para');
+        if (allParas.length > 0 && currentSession && currentSession.chunks) {
+            const totalChunks = currentSession.chunks.length;
+            const paragraphsPerChunk = Math.ceil(allParas.length / totalChunks);
+            const estimatedParaIndex = Math.min(currentChunkIndex * paragraphsPerChunk, allParas.length - 1);
+            return allParas[estimatedParaIndex];
+        }
+        
+        return null;
     }
 
     function updateSessionInfo(session) {
@@ -1901,7 +1978,7 @@
             const total = formatTime(elements.player.duration);
             elements.clock.textContent = `${current} / ${total}`;
 
-            // Highlight current word
+            // Direct word highlighting using player time
             highlightCurrentWord(elements.player.currentTime);
         }
     }
@@ -1912,30 +1989,85 @@
             word.classList.remove('active');
         });
 
-        // Find and highlight current word
-        let closestWord = null;
-        let closestDiff = Infinity;
+        if (!elements.player || !elements.player.src || elements.player.paused) {
+            return; // Don't highlight if not playing
+        }
 
-        elements.transcript.querySelectorAll('.word[data-time]').forEach(word => {
-            const wordTime = parseFloat(word.dataset.time);
-            const timeDiff = Math.abs(currentTime - wordTime);
+        // Use the actual player time for accurate sync
+        const playerTime = elements.player.currentTime;
+        
+        // Get all words with time data
+        const wordsWithTime = elements.transcript.querySelectorAll('.word[data-time]');
+        
+        if (wordsWithTime.length === 0) {
+            console.log('🎯 No words with timing data found');
+            return;
+        }
+
+        // Find the best word to highlight
+        let bestWord = null;
+        let bestScore = Infinity;
+        
+        // Convert NodeList to array and sort by time for easier processing
+        const sortedWords = Array.from(wordsWithTime)
+            .map(word => ({
+                element: word,
+                time: parseFloat(word.dataset.time || '0'),
+                text: word.textContent.trim()
+            }))
+            .filter(word => !isNaN(word.time))
+            .sort((a, b) => a.time - b.time);
+
+        console.log(`🎯 Highlighting for time ${playerTime.toFixed(2)}s among ${sortedWords.length} words`);
+        
+        // Debug: Log first few word times to understand the data
+        if (sortedWords.length > 0) {
+            const firstFew = sortedWords.slice(0, 5).map(w => `"${w.text}":${w.time.toFixed(2)}s`).join(', ');
+            console.log(`🎯 First words: ${firstFew}`);
+        }
+
+        // Find the best matching word
+        for (let i = 0; i < sortedWords.length; i++) {
+            const word = sortedWords[i];
+            const timeDiff = Math.abs(playerTime - word.time);
             
-            if (wordTime <= currentTime + 0.8 && timeDiff < closestDiff) {
-                closestDiff = timeDiff;
-                closestWord = word;
+            // Score based on time difference and position relative to current time
+            let score = timeDiff;
+            
+            // Prefer words that have already started (lower score = better)
+            if (word.time <= playerTime) {
+                score = timeDiff; // Already started words get base score
+            } else {
+                score = timeDiff + 1; // Future words get penalty
             }
-        });
+            
+            // If this word has the best score so far, select it
+            if (score < bestScore) {
+                bestScore = score;
+                bestWord = word;
+            }
+            
+            // Stop searching if we find a very close match (within 0.2 seconds)
+            if (timeDiff < 0.2 && word.time <= playerTime + 0.1) {
+                break;
+            }
+        }
 
-        if (closestWord) {
-            closestWord.classList.add('active');
+        // Highlight the selected word
+        if (bestWord && bestScore < 3.0) { // Only highlight if within 3 seconds
+            bestWord.element.classList.add('active');
             
             // Scroll into view if needed
             const transcriptRect = elements.transcript.getBoundingClientRect();
-            const wordRect = closestWord.getBoundingClientRect();
+            const wordRect = bestWord.element.getBoundingClientRect();
             
-            if (wordRect.top < transcriptRect.top || wordRect.bottom > transcriptRect.bottom) {
-                closestWord.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (wordRect.bottom < transcriptRect.top + 80 || wordRect.top > transcriptRect.bottom - 80) {
+                bestWord.element.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }
+            
+            console.log(`🎯 Highlighted "${bestWord.text}" at time ${playerTime.toFixed(2)}s (word time: ${bestWord.time.toFixed(2)}s, score: ${bestScore.toFixed(2)})`);
+        } else {
+            console.log(`🎯 No suitable word found for time ${playerTime.toFixed(2)}s (best score: ${bestScore.toFixed(2)})`);
         }
     }
 
